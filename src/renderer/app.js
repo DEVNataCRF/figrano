@@ -219,7 +219,7 @@ function renderMenu() {
         <thead><tr><th>Item</th><th class="num">Preço</th><th>Situação</th><th></th></tr></thead>
         <tbody>${category.items.map((item) => `
           <tr data-item-row="${item.id}" class="${item.available === false ? 'off' : ''}">
-            <td>${esc(item.name)}${item.description ? `<small>${esc(item.description)}</small>` : ''}</td>
+            <td><div class="item-cell">${item.photo ? `<img class="thumb" src="figrano-img://${item.photo}" alt="">` : '<span class="thumb thumb--empty" aria-hidden="true"></span>'}<div>${esc(item.name)}${item.description ? `<small>${esc(item.description)}</small>` : ''}</div></div></td>
             <td class="num">${money(item.price)}</td>
             <td><span class="tag ${item.available === false ? '' : 'tag--ok'}">${item.available === false ? 'Em falta' : 'Disponível'}</span></td>
             <td class="acts">
@@ -249,6 +249,16 @@ function openItemDialog(categoryId, item = null) {
       <label class="field"><span>Nome</span><input type="text" name="name" value="${esc(item?.name || '')}" required></label>
       <label class="field"><span>Descrição</span><input type="text" name="description" value="${esc(item?.description || '')}"><small>Aparece abaixo do nome no cardápio enviado.</small></label>
       <label class="field"><span>Preço (R$)</span><input type="number" name="price" min="0" step="0.01" value="${item ? item.price : ''}" required></label>
+      <div class="field"><span>Foto</span>
+        <div class="photo-pick">
+          <img class="photo-pick__img" data-photo-preview ${item?.photo ? `src="figrano-img://${item.photo}"` : 'hidden'} alt="">
+          <div class="photo-pick__actions">
+            <input type="file" name="photo" accept="image/jpeg,image/png,image/webp" data-photo-input>
+            ${item?.photo ? '<label class="check"><input type="checkbox" name="removePhoto"> Remover foto</label>' : ''}
+          </div>
+        </div>
+        <small>Aparece no cardápio online. Quadrada ou deitada fica melhor.</small>
+      </div>
     </div>
     <div class="dialog__foot">
       <span class="dialog__error" id="dialog-error"></span>
@@ -256,10 +266,13 @@ function openItemDialog(categoryId, item = null) {
       <button type="submit" class="btn btn--primary">Salvar</button>
     </div>`, async (form) => {
     const data = new FormData(form);
-    await api.call('menu:saveItem', categoryId, {
+    const saved = await api.call('menu:saveItem', categoryId, {
       id: item?.id, name: data.get('name'), description: data.get('description'),
       price: Number(data.get('price')), available: item ? item.available !== false : true,
     });
+    const file = form.elements.photo.files[0];
+    if (file) await api.call('menu:setItemPhoto', categoryId, saved.id, await readAsDataUrl(file));
+    else if (data.has('removePhoto')) await api.call('menu:setItemPhoto', categoryId, saved.id, null);
     return null;
   });
 }
@@ -404,6 +417,16 @@ function renderSettings() {
         <label class="field"><span>Nome da loja</span><input type="text" name="name" value="${esc(s.name)}" required></label>
         <label class="field"><span>Endereço</span><input type="text" name="address" value="${esc(s.address)}"></label>
         <div class="fields-2">
+          <div class="field"><span>Logo</span>
+            <div class="photo-pick">${s.logo ? `<img class="photo-pick__img photo-pick__img--round" src="figrano-img://${s.logo}" alt="">` : ''}
+              <div class="photo-pick__actions"><input type="file" accept="image/jpeg,image/png,image/webp" data-store-image="logo">${s.logo ? '<button type="button" class="btn btn--quiet" data-store-image-remove="logo">Remover</button>' : ''}</div></div>
+          </div>
+          <div class="field"><span>Capa do cardápio online</span>
+            <div class="photo-pick">${s.cover ? `<img class="photo-pick__img photo-pick__img--wide" src="figrano-img://${s.cover}" alt="">` : ''}
+              <div class="photo-pick__actions"><input type="file" accept="image/jpeg,image/png,image/webp" data-store-image="cover">${s.cover ? '<button type="button" class="btn btn--quiet" data-store-image-remove="cover">Remover</button>' : ''}</div></div>
+          </div>
+        </div>
+        <div class="fields-2">
           <label class="field"><span>Taxa de entrega (R$)</span><input type="number" name="deliveryFee" min="0" step="0.01" value="${s.deliveryFee}"></label>
           <label class="field"><span>Pedido mínimo (R$)</span><input type="number" name="minOrder" min="0" step="0.01" value="${s.minOrder}"></label>
         </div>
@@ -477,6 +500,16 @@ ${onlinePanel(state.settings.online)}
     </div>`;
 }
 
+/** Lê um arquivo escolhido como data URL, para enviar ao processo principal. */
+function readAsDataUrl(file) {
+  return new Promise((resolve, reject) => {
+    const reader = new FileReader();
+    reader.onload = () => resolve(reader.result);
+    reader.onerror = () => reject(new Error('Não foi possível ler o arquivo.'));
+    reader.readAsDataURL(file);
+  });
+}
+
 /** Painel de Ajustes > Pedido online. */
 function onlinePanel(online) {
   if (!online.url) {
@@ -535,6 +568,24 @@ async function refreshAiForm(form) {
 }
 
 document.addEventListener('change', async (event) => {
+  if (event.target.matches?.('[data-photo-input]')) {
+    const file = event.target.files[0];
+    const preview = $('[data-photo-preview]', event.target.closest('form'));
+    if (file && preview) { preview.src = await readAsDataUrl(file); preview.hidden = false; }
+    return;
+  }
+  if (event.target.matches?.('[data-store-image]')) {
+    const file = event.target.files[0];
+    if (!file) return;
+    try {
+      await api.call('store:setImage', event.target.dataset.storeImage, await readAsDataUrl(file));
+      renderSettings();
+      toast('Imagem salva.');
+    } catch (error) {
+      toast(errorText(error), 'error');
+    }
+    return;
+  }
   if (event.target.matches?.('[data-online-toggle]')) {
     try {
       await api.call('online:setEnabled', event.target.checked);
@@ -697,6 +748,11 @@ document.addEventListener('click', async (event) => {
   if ('archiveNow' in d) {
     const count = await call('wa:archiveOld');
     if (count !== undefined) toast(count ? `${count} conversas arquivadas.` : 'Nenhuma conversa antiga para arquivar.');
+    return undefined;
+  }
+  if (d.storeImageRemove) {
+    await call('store:setImage', d.storeImageRemove, null);
+    renderSettings();
     return undefined;
   }
   if ('onlineCopy' in d) {

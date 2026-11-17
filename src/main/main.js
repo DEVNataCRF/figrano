@@ -1,7 +1,7 @@
 'use strict';
 
 const {
-  app, BrowserWindow, ipcMain, Menu, Tray, Notification, nativeImage, safeStorage, shell,
+  app, BrowserWindow, ipcMain, Menu, Tray, Notification, nativeImage, safeStorage, shell, protocol,
 } = require('electron');
 const path = require('node:path');
 const fs = require('node:fs');
@@ -16,6 +16,7 @@ const { WhatsApp } = require('./whatsapp');
 const { iconPng } = require('./icon');
 const { startUpdater } = require('./updater');
 const { OnlineSync } = require('./online');
+const { ImageStore } = require('./images');
 
 const PROBE = process.argv.includes('--probe');
 // Os dois modos de teste usam uma pasta de dados temporária e não tocam nos dados reais.
@@ -42,6 +43,10 @@ let quitting = false;
 let lastAiError = '';
 let updater = null;
 let online = null;
+let images = null;
+
+// Fotos do cardápio aparecem no painel por figrano-img://<hash>.
+protocol.registerSchemesAsPrivileged([{ scheme: 'figrano-img', privileges: { standard: true, secure: true, supportFetchAPI: true } }]);
 // Servidor padrão da página de pedidos; dá para trocar em Ajustes.
 const DEFAULT_ONLINE_API = process.env.FIGRANO_ONLINE_API || 'https://figrano.vercel.app';
 let updateReady = ''; // versão já baixada, esperando o app fechar
@@ -275,6 +280,14 @@ const api = {
   'menu:deleteCategory': (id) => store.deleteCategory(id),
   'menu:saveItem': (categoryId, item) => store.saveItem(categoryId, item),
   'menu:deleteItem': (categoryId, itemId) => store.deleteItem(categoryId, itemId),
+  'menu:setItemPhoto': (categoryId, itemId, dataUrl) => {
+    const hash = dataUrl ? images.save(dataUrl, 'item') : null;
+    return store.setItemPhoto(categoryId, itemId, hash);
+  },
+  'store:setImage': (kind, dataUrl) => {
+    if (kind !== 'logo' && kind !== 'cover') throw new Error('Tipo de imagem inválido.');
+    store.updateSettings('store', { [kind]: dataUrl ? images.save(dataUrl, kind) : '' });
+  },
 
   'orders:create': async (input) => {
     const chatId = input.customer?.chatId || await chatIdFromPhone(input.customer?.phone);
@@ -572,12 +585,20 @@ if (!app.requestSingleInstanceLock()) {
     Menu.setApplicationMenu(null);
 
     store = new Store(path.join(app.getPath('userData'), 'figrano-dados.json'));
+    images = new ImageStore(path.join(app.getPath('userData'), 'fotos'), nativeImage);
+    protocol.handle('figrano-img', (request) => {
+      const bytes = images.read(new URL(request.url).hostname);
+      return bytes
+        ? new Response(bytes, { headers: { 'Content-Type': 'image/jpeg', 'Cache-Control': 'max-age=31536000, immutable' } })
+        : new Response('', { status: 404 });
+    });
     ai = new AiResponder({ store, getApiKey: readApiKey });
     online = new OnlineSync({
       store,
       getToken: readOnlineToken,
       importOrder: importOnlineOrder,
       getWhatsapp: () => whatsapp?.me?.phone || '',
+      readImage: (hash) => images.read(hash),
     });
     engine = new BotEngine({ store, ai, onlineLink: (chatId) => online.linkFor(chatId) });
 

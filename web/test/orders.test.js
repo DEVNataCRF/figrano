@@ -78,3 +78,11 @@ test('endereço da loja e hash do token', () => {
   for (const bad of ['ab', 'Cantina', 'api', 'a--b', '-abc', 'cantína']) assert.equal(validSlug(bad), false, bad);
   assert.equal(hashToken('x').length, 64);
 });
+
+test('link da loja usa o endereço por onde o app chegou, nunca 0.0.0.0', async () => {
+  const { storeUrl } = await import('../lib/stores.js');
+  const request = new Request('http://0.0.0.0:3100/api/stores', { headers: { host: '10.3.152.220:3100' } });
+  assert.equal(storeUrl(request, 'sabores-da-sil'), 'http://10.3.152.220:3100/sabores-da-sil');
+  const proxied = new Request('http://localhost/api/stores', { headers: { host: 'x', 'x-forwarded-host': 'figrano.app', 'x-forwarded-proto': 'https' } });
+  assert.equal(storeUrl(proxied, 'loja'), 'https://figrano.app/loja');
+});

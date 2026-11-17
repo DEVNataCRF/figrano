@@ -111,3 +111,24 @@ test('robô manda o link da página em vez do cardápio quando o pedido online e
   assert.equal(out.replies.length, 1);
   assert.match(out.replies[0], /https:\/\/pedidos\.test\/cantina\?r=[0-9a-f]{12}/);
 });
+
+test('sync envia só as fotos que o servidor pediu', async () => {
+  const { store, online } = setup();
+  const item = store.menu.categories[0].items[0];
+  store.setItemPhoto(store.menu.categories[0].id, item.id, 'a'.repeat(32));
+  const uploads = [];
+  online.readImage = (hash) => Buffer.from(`foto-${hash}`);
+  online.fetch = async (url, init = {}) => {
+    const path = new URL(url).pathname;
+    if (path === '/api/store/sync') {
+      const body = JSON.parse(init.body);
+      assert.equal(body.menu[0].items[0].photo, 'a'.repeat(32));
+      return { ok: true, status: 200, json: async () => ({ ok: true, missingImages: ['a'.repeat(32)] }) };
+    }
+    uploads.push({ path, type: init.headers['Content-Type'], size: init.body.length });
+    return { ok: true, status: 201, json: async () => ({ ok: true }) };
+  };
+  await online.sync();
+  assert.deepEqual(uploads, [{ path: `/api/store/images/${'a'.repeat(32)}`, type: 'image/jpeg', size: 37 }]);
+  assert.equal(online.lastError, '');
+});

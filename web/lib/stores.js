@@ -22,8 +22,18 @@ export async function touch(storeId) {
   await sql()`update stores set last_seen_at = now() where id = ${storeId}`;
 }
 
-/** Endereço público da página da loja. */
+/**
+ * Endereço público da página da loja. Em produção vem de PUBLIC_URL; sem
+ * ela, usa o endereço que o app desktop usou para chegar aqui (cabeçalho
+ * Host), e não o endereço em que o servidor escuta, que pode ser 0.0.0.0.
+ */
 export function storeUrl(request, slug) {
-  const base = process.env.PUBLIC_URL || new URL(request.url).origin;
+  let base = process.env.PUBLIC_URL;
+  if (!base) {
+    const url = new URL(request.url);
+    const host = request.headers.get('x-forwarded-host') || request.headers.get('host') || url.host;
+    const proto = request.headers.get('x-forwarded-proto') || url.protocol.replace(':', '');
+    base = `${proto}://${host}`;
+  }
   return `${base.replace(/\/+$/, '')}/${slug}`;
 }

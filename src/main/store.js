@@ -31,6 +31,8 @@ function defaultData() {
         payments: ['Pix', 'Cartão na entrega', 'Dinheiro'],
         delivery: true,
         pickup: true,
+        logo: '', // hash da imagem (ver images.js)
+        cover: '',
       },
       bot: {
         status: 'active',
@@ -182,6 +184,16 @@ class Store {
       item = { id: randomUUID(), ...fields };
       category.items.push(item);
     }
+    this.changed('menu');
+    return item;
+  }
+
+/** Define (ou remove, com null) a foto de um item: o hash da imagem salva. */
+  setItemPhoto(categoryId, itemId, hash) {
+    const category = this.data.menu.categories.find((c) => c.id === categoryId);
+    const item = category?.items.find((i) => i.id === itemId);
+    if (!item) throw new Error('Item não encontrado.');
+    if (hash) item.photo = hash; else delete item.photo;
     this.changed('menu');
     return item;
   }

@@ -33,3 +33,12 @@ create table if not exists orders (
 );
 
 create index if not exists orders_pending_idx on orders (store_id, created_at) where status = 'pending';
+
+-- Fotos do cardápio, logo e capa. O nome é o hash do JPEG, então nunca muda.
+create table if not exists images (
+  store_id uuid not null references stores(id) on delete cascade,
+  hash text not null,
+  bytes bytea not null,
+  created_at timestamptz not null default now(),
+  primary key (store_id, hash)
+);

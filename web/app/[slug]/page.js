@@ -10,7 +10,8 @@ export async function generateMetadata({ params }) {
   const { slug } = await params;
   const store = await storeBySlug(slug);
   if (!store) return { title: 'Loja não encontrada' };
-  return { title: `${store.name || slug}: peça online`, description: `Cardápio e pedidos do ${store.name || slug}.` };
+  const name = store.name || slug;
+  return { title: `${name}: cardápio e pedidos`, description: `Veja o cardápio e peça direto do ${name}.` };
 }
 
 export default async function StorePage({ params, searchParams }) {
@@ -20,8 +21,11 @@ export default async function StorePage({ params, searchParams }) {
   if (!store) notFound();
 
   const info = store.info || {};
+  const image = (hash) => (hash ? `/i/${slug}/${hash}` : '');
   const { canOrder, reason } = storeAvailability(store);
-  const menu = (store.menu || []).filter((category) => (category.items || []).length > 0);
+  const menu = (store.menu || [])
+    .filter((category) => (category.items || []).length > 0)
+    .map((category) => ({ ...category, items: category.items.map((item) => ({ ...item, photo: image(item.photo) })) }));
 
   return (
     <OrderApp
@@ -29,6 +33,8 @@ export default async function StorePage({ params, searchParams }) {
       refCode={typeof r === 'string' ? r : ''}
       store={{
         name: store.name || info.name || slug,
+        logo: image(info.logo),
+        cover: image(info.cover),
         address: info.address || '',
         whatsapp: info.whatsapp || info.phone || '',
         deliveryFee: Number(info.deliveryFee) || 0,

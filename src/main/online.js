@@ -18,13 +18,17 @@ class OnlineSync {
    * @param {() => string} deps.getToken token da loja em texto, ou ''
    * @param {(order: object) => Promise<object>} deps.importOrder cria o pedido local e devolve-o
    * @param {() => string} [deps.getWhatsapp] telefone da loja conectado no WhatsApp
+   * @param {(hash: string) => Buffer|null} [deps.readImage] bytes de uma foto salva
    * @param {typeof fetch} [deps.fetch]
    */
-  constructor({ store, getToken, importOrder, getWhatsapp = () => '', fetch: fetchImpl = globalThis.fetch }) {
+  constructor({
+    store, getToken, importOrder, getWhatsapp = () => '', readImage = () => null, fetch: fetchImpl = globalThis.fetch,
+  }) {
     this.store = store;
     this.getToken = getToken;
     this.importOrder = importOrder;
     this.getWhatsapp = getWhatsapp;
+    this.readImage = readImage;
     this.fetch = fetchImpl;
     this.pollTimer = null;
     this.syncTimer = null;
@@ -93,12 +97,14 @@ class OnlineSync {
       info: {
         name: s.name, address: s.address, phone: s.phone, hours: s.hours, deliveryFee: s.deliveryFee,
         minOrder: s.minOrder, prepMinutes: s.prepMinutes, payments: s.payments, delivery: s.delivery,
-        pickup: s.pickup, whatsapp: this.getWhatsapp() || s.phone || '',
+        pickup: s.pickup, whatsapp: this.getWhatsapp() || s.phone || '', logo: s.logo || '', cover: s.cover || '',
       },
       menu: this.store.menu.categories.map((category) => ({
         id: category.id,
         name: category.name,
-        items: category.items.map(({ id, name, description, price, available }) => ({ id, name, description, price, available })),
+        items: category.items.map(({ id, name, description, price, available, photo }) => ({
+          id, name, description, price, available, photo: photo || '',
+        })),
       })),
     };
   }
@@ -108,9 +114,31 @@ class OnlineSync {
     try {
       const data = await this.request('PUT', '/api/store/sync', this.snapshot());
       if (data.url && data.url !== this.settings.url) this.store.updateSettings('online', { url: data.url });
+      // O servidor diz quais fotos ainda não tem; manda só essas.
+      for (const hash of data.missingImages || []) await this.uploadImage(hash);
       this.ok();
     } catch (error) {
       this.fail(error);
+    }
+  }
+
+  async uploadImage(hash) {
+    const bytes = this.readImage(hash);
+    if (!bytes) return;
+    let response;
+    try {
+      response = await this.fetch(`${this.settings.apiUrl.replace(/\/+$/, '')}/api/store/images/${hash}`, {
+        method: 'PUT',
+        headers: { 'Content-Type': 'image/jpeg', Authorization: `Bearer ${this.getToken()}` },
+        body: bytes,
+        signal: AbortSignal.timeout(30000),
+      });
+    } catch {
+      throw new Error('Sem conexão com o servidor de pedidos online.');
+    }
+    if (!response.ok) {
+      const data = await response.json().catch(() => ({}));
+      throw new Error(data.error || `Falha ao enviar foto (${response.status}).`);
     }
   }
 
