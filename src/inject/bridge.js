@@ -72,7 +72,7 @@
         post('message', {
           id: wid(msg.id),
           chatId,
-          phone: fromMe ? '' : await phoneOf(chatId),
+          phone: await phoneOf(chatId),
           fromMe,
           type: msg.type,
           text: msg.type === 'chat' ? (msg.body || '') : (msg.caption || ''),

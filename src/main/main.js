@@ -22,6 +22,8 @@ const SMOKE = process.argv.includes('--smoke') || PROBE;
 // --send-test=<telefone>: roda o app normal com os dados reais e, ao conectar,
 // envia uma mensagem de teste ao número e registra no console o que chegar.
 const SEND_TEST = (process.argv.find((arg) => arg.startsWith('--send-test=')) || '').slice('--send-test='.length);
+// --test-log: só registra no console o que chega, sem enviar nada.
+const TEST_LOG = Boolean(SEND_TEST) || process.argv.includes('--test-log');
 const TOP_BAR_COLOR = '#EFECE6';
 const MESSAGE_TYPES = new Set(['chat', 'image', 'ptt', 'location']);
 const STALE_MESSAGE_SECONDS = 120; // ignora histórico que o WhatsApp sincroniza ao conectar
@@ -116,7 +118,11 @@ function onWhatsappMessage(msg) {
 
   if (msg.fromMe) {
     // O atendente respondeu por conta própria: o robô sai da conversa por um tempo.
-    const manual = !sendQueue.sentRecently(chatId);
+    // O eco do envio pode vir com outro ID da mesma pessoa (enviado para
+    // "<telefone>@c.us", ecoado como "<id>@lid"): compara também pelo telefone.
+    const phoneChat = msg.phone ? `${msg.phone}@c.us` : '';
+    const manual = !sendQueue.sentRecently(chatId) && !(phoneChat && sendQueue.sentRecently(phoneChat));
+    if (TEST_LOG) console.log(`[teste] eco chat=${chatId} telefone=${msg.phone || '?'} manual=${manual}`);
     if (manual && bot.autoPauseOnManualReply && bot.status === 'active' && !store.isPaused(chatId)) {
       store.pauseChat(chatId, '15m');
     }
@@ -126,13 +132,13 @@ function onWhatsappMessage(msg) {
   if (!MESSAGE_TYPES.has(msg.type) || msg.isNew === false) return;
   if (msg.timestamp && Date.now() / 1000 - msg.timestamp > STALE_MESSAGE_SECONDS) return;
 
-  if (SEND_TEST) console.log(`[teste] recebida chat=${chatId} telefone=${msg.phone || '?'} tipo=${msg.type}`);
+  if (TEST_LOG) console.log(`[teste] recebida chat=${chatId} telefone=${msg.phone || '?'} tipo=${msg.type}`);
 
   receiveQueue.push(async () => {
     const out = await engine.handle({
       chatId, phone: msg.phone, name: msg.name, type: msg.type, text: msg.text, location: msg.location,
     });
-    if (SEND_TEST) console.log(`[teste] robô respondeu ${out.replies.length} mensagem(ns); efeitos=${out.effects.map((e) => e.type).join(',') || 'nenhum'}`);
+    if (TEST_LOG) console.log(`[teste] robô respondeu ${out.replies.length} mensagem(ns); efeitos=${out.effects.map((e) => e.type).join(',') || 'nenhum'}`);
     for (const effect of out.effects) {
       if (effect.type === 'order_created') {
         notify(`Novo pedido #${effect.order.number}`, `${effect.order.customer.name} · ${money(effect.order.total)}`, 'orders');
@@ -492,7 +498,7 @@ if (!app.requestSingleInstanceLock()) {
     store.onChange(push);
     whatsapp.on('state', (state) => {
       push('whatsapp');
-      if (SEND_TEST) console.log(`[teste] whatsapp=${state} ${whatsapp.detail || ''}`);
+      if (TEST_LOG) console.log(`[teste] whatsapp=${state} ${whatsapp.detail || ''}`);
       if (state === 'ready' && SEND_TEST) runSendTest(SEND_TEST);
       if (state === 'ready' && store.settings.bot.autoArchive) {
         whatsapp.call('archiveOld', Number(store.settings.bot.archiveDays) || 60).catch(() => {});
