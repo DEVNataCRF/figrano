@@ -50,10 +50,10 @@ cd web
 echo DATABASE_URL=postgres://postgres:figrano@127.0.0.1:5433/figrano > .env.local
 npm install
 npm run migrate   # com DATABASE_URL no ambiente
-npm run dev
+npm run dev -- -p 3100
 ```
 
-No app desktop, use `http://127.0.0.1:3000` como servidor em Ajustes → Pedido online → Servidor.
+No app desktop, use `http://127.0.0.1:3100` como servidor em Ajustes → Pedido online → Servidor.
 
 ## O que o app faz
 
