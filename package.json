@@ -1,0 +1,20 @@
+{
+  "name": "figrano",
+  "version": "0.1.0",
+  "description": "Figrano: atendimento automático de pedidos pelo WhatsApp para restaurantes",
+  "main": "src/main/main.js",
+  "private": true,
+  "scripts": {
+    "start": "electron .",
+    "smoke": "electron . --smoke",
+    "probe": "electron . --probe",
+    "test": "node --test"
+  },
+  "dependencies": {
+    "@anthropic-ai/sdk": "^1.9.0",
+    "@wppconnect/wa-js": "^4.8.0"
+  },
+  "devDependencies": {
+    "electron": "^45.3.3"
+  }
+}

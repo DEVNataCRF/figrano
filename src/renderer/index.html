@@ -1,0 +1,60 @@
+<!doctype html>
+<html lang="pt-BR">
+<head>
+  <meta charset="utf-8">
+  <meta http-equiv="Content-Security-Policy" content="default-src 'self'; style-src 'self'; script-src 'self'; img-src 'self' data:">
+  <title>Figrano</title>
+  <link rel="stylesheet" href="styles.css">
+</head>
+<body>
+  <header class="topbar">
+    <span class="brand">Figrano</span>
+    <div class="bot-switch" role="group" aria-label="Status do robô">
+      <span class="bot-switch__label">Robô</span>
+      <button type="button" data-bot-status="active">Ativo</button>
+      <button type="button" data-bot-status="alerts" title="Não responde clientes; só envia avisos de pedido">Só avisos</button>
+      <button type="button" data-bot-status="inactive">Desligado</button>
+    </div>
+    <span class="conn" id="conn"><span class="dot"></span><span id="conn-text">Conectando</span></span>
+  </header>
+
+  <nav class="sidebar" aria-label="Seções">
+    <button type="button" data-page="orders">
+      <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M6 3h12v18l-3-2-3 2-3-2-3 2z"/><path d="M9 8h6M9 12h6"/></svg>
+      <span>Pedidos</span><b class="badge" id="badge-orders" hidden></b>
+    </button>
+    <button type="button" data-page="menu">
+      <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M4 5h7v15H4zM13 5h7v15h-7z"/><path d="M7 9h1M7 13h1M16 9h1M16 13h1"/></svg>
+      <span>Cardápio</span>
+    </button>
+    <button type="button" data-page="handoffs">
+      <svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="12" cy="8" r="4"/><path d="M4 21c0-4 4-6 8-6s8 2 8 6"/></svg>
+      <span>Atender</span><b class="badge" id="badge-handoffs" hidden></b>
+    </button>
+    <button type="button" data-page="whatsapp">
+      <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M4 20l1.5-4.5A8 8 0 1 1 9 19z"/></svg>
+      <span>WhatsApp</span>
+    </button>
+    <button type="button" data-page="settings" class="sidebar__last">
+      <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M4 7h10M18 7h2M4 17h2M10 17h10"/><circle cx="16" cy="7" r="2"/><circle cx="8" cy="17" r="2"/></svg>
+      <span>Ajustes</span>
+    </button>
+  </nav>
+
+  <main id="main">
+    <section class="page" id="page-orders" hidden></section>
+    <section class="page" id="page-menu" hidden></section>
+    <section class="page" id="page-handoffs" hidden></section>
+    <section class="page page--flush" id="page-whatsapp" hidden>
+      <div class="chatbar" id="chatbar"></div>
+      <div class="wa-slot" id="wa-slot"><p class="wa-slot__note" id="wa-note"></p></div>
+    </section>
+    <section class="page" id="page-settings" hidden></section>
+  </main>
+
+  <dialog id="dialog"></dialog>
+  <div class="toast" id="toast" role="status" hidden></div>
+
+  <script src="app.js"></script>
+</body>
+</html>

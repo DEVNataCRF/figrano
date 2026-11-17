@@ -1,0 +1,454 @@
+'use strict';
+
+const {
+  app, BrowserWindow, ipcMain, Menu, Tray, Notification, nativeImage, safeStorage, shell,
+} = require('electron');
+const path = require('node:path');
+const fs = require('node:fs');
+const os = require('node:os');
+
+const { Store } = require('./store');
+const { BotEngine } = require('./bot/engine');
+const { AiResponder } = require('./bot/ai');
+const { menuText, statusNotification, money } = require('./bot/format');
+const { SerialQueue, SendQueue } = require('./queues');
+const { WhatsApp } = require('./whatsapp');
+const { iconPng } = require('./icon');
+
+const PROBE = process.argv.includes('--probe');
+// Os dois modos de teste usam uma pasta de dados temporária e não tocam nos dados reais.
+const SMOKE = process.argv.includes('--smoke') || PROBE;
+const TOP_BAR_COLOR = '#EFECE6';
+const MESSAGE_TYPES = new Set(['chat', 'image', 'ptt', 'location']);
+const STALE_MESSAGE_SECONDS = 120; // ignora histórico que o WhatsApp sincroniza ao conectar
+
+if (SMOKE) app.setPath('userData', fs.mkdtempSync(path.join(os.tmpdir(), 'figrano-smoke-')));
+
+let win = null;
+let tray = null;
+let store = null;
+let engine = null;
+let ai = null;
+let whatsapp = null;
+let sendQueue = null;
+let quitting = false;
+let lastAiError = '';
+const receiveQueue = new SerialQueue();
+
+// ------------------------------------------------------------- chave de API
+
+function readApiKey() {
+  const stored = store.settings.ai.apiKeyEncrypted;
+  if (!stored) return '';
+  try {
+    if (stored.startsWith('plain:')) return stored.slice(6);
+    return safeStorage.decryptString(Buffer.from(stored, 'base64'));
+  } catch {
+    return '';
+  }
+}
+
+function writeApiKey(key) {
+  const clean = String(key || '').trim();
+  let stored = '';
+  if (clean) {
+    stored = safeStorage.isEncryptionAvailable()
+      ? safeStorage.encryptString(clean).toString('base64')
+      : `plain:${clean}`;
+  }
+  store.updateSettings('ai', { apiKeyEncrypted: stored });
+}
+
+// ----------------------------------------------------------------- utilidades
+
+function notify(title, body, target) {
+  if (SMOKE || !Notification.isSupported()) return;
+  const notification = new Notification({ title, body, icon: nativeImage.createFromBuffer(iconPng(128)) });
+  notification.on('click', () => {
+    showWindow();
+    if (target) win?.webContents.send('navigate', target);
+  });
+  notification.show();
+}
+
+function showWindow() {
+  if (!win) return;
+  if (win.isMinimized()) win.restore();
+  win.show();
+  win.focus();
+}
+
+function chatIdFromPhone(phone) {
+  const digits = String(phone || '').replace(/\D/g, '');
+  if (digits.length < 10) return '';
+  return `${digits.length <= 11 ? `55${digits}` : digits}@c.us`;
+}
+
+function sendToChat(chatId, texts, options) {
+  if (!whatsapp?.ready) return Promise.resolve({ sent: 0, skipped: texts.length, failed: 0, error: 'WhatsApp desconectado' });
+  return sendQueue.enqueue(chatId, texts, options);
+}
+
+// ------------------------------------------------------- mensagens recebidas
+
+function onWhatsappMessage(msg) {
+  const chatId = msg.chatId || '';
+  if (!chatId || chatId.endsWith('@g.us') || chatId.endsWith('@broadcast') || chatId.endsWith('@newsletter')) return;
+  const bot = store.settings.bot;
+
+  if (msg.fromMe) {
+    // O atendente respondeu por conta própria: o robô sai da conversa por um tempo.
+    const manual = !sendQueue.sentRecently(chatId);
+    if (manual && bot.autoPauseOnManualReply && bot.status === 'active' && !store.isPaused(chatId)) {
+      store.pauseChat(chatId, '15m');
+    }
+    return;
+  }
+
+  if (!MESSAGE_TYPES.has(msg.type) || msg.isNew === false) return;
+  if (msg.timestamp && Date.now() / 1000 - msg.timestamp > STALE_MESSAGE_SECONDS) return;
+
+  receiveQueue.push(async () => {
+    const out = await engine.handle({
+      chatId, name: msg.name, type: msg.type, text: msg.text, location: msg.location,
+    });
+    for (const effect of out.effects) {
+      if (effect.type === 'order_created') {
+        notify(`Novo pedido #${effect.order.number}`, `${effect.order.customer.name} · ${money(effect.order.total)}`, 'orders');
+      } else if (effect.type === 'handoff') {
+        notify('Cliente pediu atendente', `${effect.handoff.name}: ${effect.handoff.motive}`.slice(0, 120), 'handoffs');
+      } else if (effect.type === 'ai_error') {
+        lastAiError = AiResponder.describeError({ message: effect.message });
+        console.error('[ia]', effect.message);
+        win?.webContents.send('state:changed', 'ai');
+      }
+    }
+    // A resposta ao pedido de atendente precisa sair mesmo com a conversa recém-pausada.
+    const isHandoff = out.effects.some((effect) => effect.type === 'handoff');
+    if (out.replies.length) await sendToChat(chatId, out.replies, { respectsPause: !isHandoff });
+  }).catch((error) => console.error('[robô] falha ao processar mensagem:', error));
+}
+
+// ------------------------------------------------------------------------ API
+
+function publicState() {
+  const { ai: aiSettings, ...settings } = store.settings;
+  const wa = whatsapp ? whatsapp.snapshot() : { state: 'loading', detail: '', me: null, activeChat: null };
+  if (wa.activeChat) {
+    wa.activeChat = { ...wa.activeChat, pausedUntil: store.pauseUntil(wa.activeChat.chatId) };
+  }
+  return {
+    version: app.getVersion(),
+    settings: { ...settings, ai: { enabled: aiSettings.enabled, hasKey: Boolean(aiSettings.apiKeyEncrypted), lastError: lastAiError } },
+    menu: store.menu,
+    orders: store.orders,
+    handoffs: store.handoffs,
+    whatsapp: wa,
+  };
+}
+
+const api = {
+  'state:get': () => publicState(),
+
+  'settings:update': (section, patch) => {
+    if (!['store', 'bot', 'app'].includes(section)) throw new Error('Seção inválida.');
+    store.updateSettings(section, patch);
+    if (section === 'app' && app.isPackaged) app.setLoginItemSettings({ openAtLogin: Boolean(patch.autoStart) });
+  },
+  'ai:configure': ({ enabled, apiKey }) => {
+    if (apiKey !== undefined) writeApiKey(apiKey);
+    if (enabled !== undefined) store.updateSettings('ai', { enabled: Boolean(enabled) });
+    lastAiError = '';
+  },
+  'ai:test': async () => {
+    if (!readApiKey()) throw new Error('Informe a chave de API antes de testar.');
+    try {
+      await ai.test();
+      lastAiError = '';
+      return 'Chave válida. A IA está pronta.';
+    } catch (error) {
+      throw new Error(AiResponder.describeError(error));
+    }
+  },
+
+  'menu:saveCategory': (category) => store.saveCategory(category),
+  'menu:deleteCategory': (id) => store.deleteCategory(id),
+  'menu:saveItem': (categoryId, item) => store.saveItem(categoryId, item),
+  'menu:deleteItem': (categoryId, itemId) => store.deleteItem(categoryId, itemId),
+
+  'orders:create': (input) => {
+    const chatId = input.customer?.chatId || chatIdFromPhone(input.customer?.phone);
+    return store.createOrder({ ...input, customer: { ...input.customer, chatId }, source: 'manual' });
+  },
+  'orders:setStatus': async (id, status) => {
+    const order = store.setOrderStatus(id, status);
+    const text = statusNotification(order, store.settings.store.name);
+    // Avisos de pedido saem em "ativo" e "só avisos", mesmo com a conversa pausada.
+    if (text && order.customer.chatId && store.settings.bot.status !== 'inactive') {
+      sendToChat(order.customer.chatId, [text], { respectsPause: false });
+    }
+    return order;
+  },
+  'orders:print': (id) => printOrder(id),
+
+  'handoffs:open': async (id) => {
+    const handoff = store.handoffs.find((h) => h.id === id);
+    if (!handoff) throw new Error('Chamado não encontrado.');
+    if (!whatsapp?.ready) throw new Error('O WhatsApp não está conectado.');
+    store.pauseChat(handoff.chatId, '24h');
+    await whatsapp.call('openChat', handoff.chatId);
+    const greeting = store.settings.bot.handoffMessage.trim();
+    if (greeting) sendToChat(handoff.chatId, [greeting], { respectsPause: false });
+    store.resolveHandoff(id);
+  },
+  'handoffs:resolve': (id) => store.resolveHandoff(id),
+
+  'wa:layout': (bounds) => whatsapp?.layout(bounds),
+  'wa:reload': () => whatsapp?.reload(),
+  'wa:pause': (chatId, duration) => store.pauseChat(chatId, duration),
+  'wa:resume': (chatId) => { store.resumeChat(chatId); store.resolveHandoffsOf(chatId); },
+  'wa:sendMenu': async (chatId) => {
+    if (!whatsapp?.ready) throw new Error('O WhatsApp não está conectado.');
+    const result = await sendToChat(chatId, [menuText(store.numberedItems())], { respectsPause: false });
+    if (result.failed) throw new Error(`Não foi possível enviar: ${result.error}`);
+  },
+  'wa:openChat': async (phoneOrChatId) => {
+    if (!whatsapp?.ready) throw new Error('O WhatsApp não está conectado.');
+    const chatId = String(phoneOrChatId).includes('@') ? phoneOrChatId : chatIdFromPhone(phoneOrChatId);
+    if (!chatId) throw new Error('Telefone inválido.');
+    await whatsapp.call('openChat', chatId);
+  },
+  'wa:archiveOld': async () => {
+    if (!whatsapp?.ready) throw new Error('O WhatsApp não está conectado.');
+    return whatsapp.call('archiveOld', Number(store.settings.bot.archiveDays) || 60);
+  },
+};
+
+function registerApi() {
+  ipcMain.handle('api', async (event, request) => {
+    if (!win || event.sender !== win.webContents) throw new Error('Origem não autorizada.');
+    const handler = api[request?.method];
+    if (!handler) throw new Error(`Método desconhecido: ${request?.method}`);
+    return handler(...(Array.isArray(request.args) ? request.args : []));
+  });
+}
+
+// ------------------------------------------------------------------ impressão
+
+const escapeHtml = (text) => String(text ?? '').replace(/[&<>"']/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
+
+function receiptHtml(order) {
+  const s = store.settings.store;
+  const lines = order.items.map((line) => `
+    <tr><td>${line.qty}x ${escapeHtml(line.name)}${line.notes ? `<br><small>${escapeHtml(line.notes)}</small>` : ''}</td>
+    <td class="r">${money(line.qty * line.price)}</td></tr>`).join('');
+  return `<!doctype html><meta charset="utf-8"><title>Pedido ${order.number}</title>
+  <style>
+    body{font:13px/1.4 Consolas,monospace;width:72mm;margin:0;padding:4mm;color:#000}
+    h1{font-size:16px;margin:0 0 2mm} table{width:100%;border-collapse:collapse}
+    td{padding:1mm 0;vertical-align:top} .r{text-align:right;white-space:nowrap}
+    hr{border:0;border-top:1px dashed #000;margin:2mm 0} small{font-size:11px}
+  </style>
+  <h1>${escapeHtml(s.name)}</h1>
+  <div>Pedido #${order.number} · ${new Date(order.createdAt).toLocaleString('pt-BR')}</div><hr>
+  <div>${escapeHtml(order.customer.name)} · ${escapeHtml(order.customer.phone)}</div>
+  <div>${order.mode === 'delivery' ? `Entrega: ${escapeHtml(order.address)}` : 'Retirada na loja'}</div><hr>
+  <table>${lines}</table><hr>
+  <table>
+    <tr><td>Subtotal</td><td class="r">${money(order.subtotal)}</td></tr>
+    ${order.fee ? `<tr><td>Entrega</td><td class="r">${money(order.fee)}</td></tr>` : ''}
+    <tr><td><b>Total</b></td><td class="r"><b>${money(order.total)}</b></td></tr>
+  </table>
+  <div>Pagamento: ${escapeHtml(order.payment)}${order.changeFor ? ` (troco para ${money(order.changeFor)})` : ''}</div>
+  ${order.notes ? `<hr><div>Obs.: ${escapeHtml(order.notes)}</div>` : ''}`;
+}
+
+function printOrder(id) {
+  const order = store.orders.find((o) => o.id === id);
+  if (!order) throw new Error('Pedido não encontrado.');
+  const printer = new BrowserWindow({ show: false, webPreferences: { sandbox: true, javascript: false } });
+  printer.loadURL(`data:text/html;charset=utf-8,${encodeURIComponent(receiptHtml(order))}`);
+  printer.webContents.once('did-finish-load', () => {
+    printer.webContents.print({ silent: false, printBackground: false }, () => printer.destroy());
+  });
+}
+
+// --------------------------------------------------------------------- janela
+
+function createWindow() {
+  win = new BrowserWindow({
+    width: 1280,
+    height: 800,
+    minWidth: 980,
+    minHeight: 620,
+    show: false,
+    title: 'Figrano',
+    icon: nativeImage.createFromBuffer(iconPng(256)),
+    backgroundColor: '#F6F4F0',
+    titleBarStyle: 'hidden',
+    titleBarOverlay: { color: TOP_BAR_COLOR, symbolColor: '#1F1D1A', height: 40 },
+    webPreferences: {
+      preload: path.join(__dirname, '..', 'preload', 'shell.preload.js'),
+      contextIsolation: true,
+      sandbox: true,
+      nodeIntegration: false,
+    },
+  });
+
+  win.webContents.setWindowOpenHandler(({ url }) => {
+    if (url.startsWith('https://')) shell.openExternal(url);
+    return { action: 'deny' };
+  });
+  win.webContents.on('will-navigate', (event) => event.preventDefault());
+
+  win.loadFile(path.join(__dirname, '..', 'renderer', 'index.html'));
+  win.once('ready-to-show', () => { if (!SMOKE) { win.maximize(); win.show(); } });
+
+  // Fechar esconde na bandeja: o robô continua respondendo.
+  win.on('close', (event) => {
+    if (quitting || SMOKE) return;
+    event.preventDefault();
+    win.hide();
+  });
+}
+
+function createTray() {
+  tray = new Tray(nativeImage.createFromBuffer(iconPng(32)));
+  tray.setToolTip('Figrano');
+  tray.setContextMenu(Menu.buildFromTemplate([
+    { label: 'Abrir o Figrano', click: showWindow },
+    { type: 'separator' },
+    { label: 'Sair', click: () => { quitting = true; app.quit(); } },
+  ]));
+  tray.on('click', showWindow);
+}
+
+const wait = (ms) => new Promise((resolve) => setTimeout(resolve, ms));
+
+/** Dados de exemplo usados só no teste de fumaça, em pasta temporária. */
+function seedDemoData() {
+  store.updateSettings('store', { name: 'Cantina Exemplo', address: 'Rua das Laranjeiras, 80', deliveryFee: 6 });
+  const pizzas = store.saveCategory({ name: 'Pizzas' });
+  const calabresa = store.saveItem(pizzas.id, { name: 'Calabresa', description: 'Calabresa, cebola e azeitona', price: 42 });
+  store.saveItem(pizzas.id, { name: 'Quatro queijos', price: 48, available: false });
+  const drinks = store.saveCategory({ name: 'Bebidas' });
+  const soda = store.saveItem(drinks.id, { name: 'Refrigerante 2 L', price: 12 });
+  const first = store.createOrder({
+    customer: { chatId: '5511988887777@c.us', name: 'Marina Lopes', phone: '5511988887777' },
+    items: [{ ...calabresa, qty: 2, notes: 'sem cebola' }, { ...soda, qty: 1 }],
+    mode: 'delivery', address: 'Av. Central, 1200, ap. 34', payment: 'Dinheiro', changeFor: 150,
+  });
+  const second = store.createOrder({
+    customer: { name: 'Balcão', phone: '' }, items: [{ ...calabresa, qty: 1 }], mode: 'pickup', payment: 'Pix', source: 'manual',
+  });
+  store.setOrderStatus(second.id, 'preparing');
+  store.addHandoff({ chatId: '5511977776666@c.us', name: 'Paulo Reis', motive: 'Pedido chegou sem a bebida', priority: 'high', mood: 'frustrated' });
+  return first;
+}
+
+/** Abre cada seção com dados de exemplo, salva uma captura de tela e confere erros de script. */
+async function smokeTest() {
+  try {
+    seedDemoData();
+    win.setSize(1280, 800);
+    win.showInactive();
+    await wait(1200);
+    let ok = true;
+    for (const target of ['orders', 'menu', 'handoffs', 'settings']) {
+      win.webContents.send('navigate', target);
+      await wait(500);
+      const file = path.join(process.cwd(), `smoke-${target}.png`);
+      fs.writeFileSync(file, (await win.webContents.capturePage()).toPNG());
+    }
+    win.webContents.send('navigate', 'orders');
+    await wait(300);
+    const report = await win.webContents.executeJavaScript('window.__smoke()');
+    ok = Boolean(report && report.ok);
+    console.log(`SMOKE ${JSON.stringify(report)}`);
+    app.exit(ok ? 0 : 1);
+  } catch (error) {
+    console.error('SMOKE falhou:', error);
+    app.exit(1);
+  }
+}
+
+/**
+ * Sonda do WhatsApp: abre o WhatsApp Web de verdade em um perfil temporário,
+ * injeta a biblioteca e informa o estado alcançado. Não faz login.
+ */
+async function probeWhatsapp() {
+  const started = Date.now();
+  whatsapp.on('state', (state) => console.log(`PROBE estado=${state} ${whatsapp.detail || ''} (${Date.now() - started} ms)`));
+  win.setSize(1280, 800);
+  win.showInactive();
+  await wait(800);
+  win.webContents.send('navigate', 'whatsapp');
+  whatsapp.create();
+  const deadline = Date.now() + 60000;
+  while (Date.now() < deadline && (whatsapp.state === 'loading' || whatsapp.state === 'syncing')) await wait(500);
+  await wait(2500);
+  let page = null;
+  try {
+    page = await whatsapp.view.webContents.executeJavaScript(
+      '({ wpp: typeof WPP, version: typeof WPP === "object" ? WPP.version : null, ready: typeof WPP === "object" ? WPP.isFullReady : null, bridge: typeof window.__figrano, state: window.__figrano ? window.__figrano.state() : null, title: document.title })',
+    );
+  } catch (error) {
+    page = { error: error.message };
+  }
+  fs.writeFileSync(path.join(process.cwd(), 'probe.png'), (await win.webContents.capturePage()).toPNG());
+  fs.writeFileSync(path.join(process.cwd(), 'probe-wa.png'), (await whatsapp.view.webContents.capturePage()).toPNG());
+  console.log(`PROBE final=${whatsapp.state} pagina=${JSON.stringify(page)} limites=${JSON.stringify(whatsapp.bounds)}`);
+  app.exit(whatsapp.state === 'qr' || whatsapp.state === 'ready' ? 0 : 1);
+}
+
+// ------------------------------------------------------------------ arranque
+
+if (!app.requestSingleInstanceLock()) {
+  app.quit();
+} else {
+  app.on('second-instance', showWindow);
+
+  app.whenReady().then(() => {
+    app.setAppUserModelId('br.figrano.app');
+    Menu.setApplicationMenu(null);
+
+    store = new Store(path.join(app.getPath('userData'), 'figrano-dados.json'));
+    ai = new AiResponder({ store, getApiKey: readApiKey });
+    engine = new BotEngine({ store, ai });
+
+    registerApi();
+    createWindow();
+
+    whatsapp = new WhatsApp(win);
+    sendQueue = new SendQueue({
+      transport: {
+        typing: (chatId, ms) => whatsapp.call('typing', chatId, ms),
+        send: (chatId, text) => whatsapp.call('sendText', chatId, text),
+      },
+      isPaused: (chatId) => store.isPaused(chatId),
+    });
+
+    const push = (topic) => { if (win && !win.isDestroyed()) win.webContents.send('state:changed', topic); };
+    store.onChange(push);
+    whatsapp.on('state', (state) => {
+      push('whatsapp');
+      if (state === 'ready' && store.settings.bot.autoArchive) {
+        whatsapp.call('archiveOld', Number(store.settings.bot.archiveDays) || 60).catch(() => {});
+      }
+    });
+    whatsapp.on('active_chat', () => push('whatsapp'));
+    whatsapp.on('message', onWhatsappMessage);
+
+    if (PROBE) {
+      win.webContents.once('did-finish-load', probeWhatsapp);
+    } else if (SMOKE) {
+      win.webContents.once('did-finish-load', smokeTest);
+    } else {
+      whatsapp.create();
+      createTray();
+    }
+  });
+
+  app.on('before-quit', () => { quitting = true; store?.flush(); });
+  app.on('window-all-closed', () => { if (SMOKE) app.quit(); });
+}
