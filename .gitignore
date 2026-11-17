@@ -3,3 +3,4 @@ smoke*.png
 probe*.png
 dist/
 build/
+.tmp-shots/

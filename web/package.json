@@ -1,0 +1,20 @@
+{
+  "name": "figrano-web",
+  "version": "0.1.0",
+  "private": true,
+  "description": "Página de pedido online do Figrano",
+  "type": "module",
+  "scripts": {
+    "dev": "next dev",
+    "build": "next build",
+    "start": "next start",
+    "migrate": "node scripts/migrate.js",
+    "test": "node --test"
+  },
+  "dependencies": {
+    "next": "16.4.6",
+    "postgres": "4.1.1",
+    "react": "19.3.1",
+    "react-dom": "19.3.1"
+  }
+}

@@ -12,7 +12,7 @@ const MAX_STEPS = 6;
 const TOOLS = [
   {
     name: 'send_menu',
-    description: 'Envia ao cliente o cardápio numerado completo. Use quando ele pedir o cardápio ou não souber o que há.',
+    description: 'Envia ao cliente o cardápio (ou o link da página de pedidos, se a loja tiver). Use quando ele pedir o cardápio ou não souber o que há.',
     strict: true,
     input_schema: { type: 'object', properties: {}, required: [], additionalProperties: false },
   },
@@ -217,9 +217,16 @@ class AiResponder {
   runTool(name, input, { engine, session, out, deferred }) {
     switch (name) {
       case 'send_menu':
-        // Vai depois do texto da atendente: primeiro a saudação, depois a lista.
+      {
+        // Vai depois do texto da atendente: primeiro a saudação, depois o cardápio.
+        const online = engine.onlineMenuText(session);
+        if (online) {
+          deferred.push(online);
+          return 'O link da página de pedidos será enviado logo depois da sua resposta. Não repita o link nem a lista; diga que ele pode pedir pela página ou por aqui.';
+        }
         deferred.push(menuText(this.store.numberedItems()));
         return 'O cardápio será enviado logo depois da sua resposta, numa mensagem separada. Não repita a lista.';
+      }
       case 'add_items':
         if (!Array.isArray(input.items)) return 'Entrada inválida.';
         return engine.addItems(session, input.items).message;

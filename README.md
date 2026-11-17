@@ -33,6 +33,28 @@ Os dois últimos usam uma pasta de dados temporária e não tocam nos dados reai
 - Para publicar: aumente `version` no `package.json` e rode `npm run release` com um token do GitHub em `GH_TOKEN`.
 - Assinatura de código: com um certificado, defina `CSC_LINK` (arquivo `.pfx`) e `CSC_KEY_PASSWORD` antes de gerar. Sem ele o instalador sai sem assinatura e o Windows mostra o aviso do SmartScreen.
 
+## Pedido online (`web/`)
+
+Página onde o cliente vê o cardápio e faz o pedido sozinho. Cada loja tem a sua (`<servidor>/<endereço-da-loja>`). Next.js com Postgres, hospedado na Vercel.
+
+- O app desktop cadastra a loja em **Ajustes → Pedido online**, envia o cardápio sempre que ele muda e busca os pedidos novos a cada 5 s. O servidor nunca chama o computador da loja.
+- O robô passa a mandar o link da página em vez da lista inteira. O link leva um código que liga o pedido de volta à conversa certa do WhatsApp.
+- Preços, taxa e disponibilidade são conferidos no servidor com o cardápio sincronizado; o navegador não decide valores.
+- Sem notícia do app desktop há mais de 90 s, a página mostra o cardápio mas não aceita pedidos (o pedido ficaria sem ninguém para ver).
+
+Desenvolvimento local:
+
+```
+docker run -d --name figrano-pg -e POSTGRES_PASSWORD=figrano -e POSTGRES_DB=figrano -p 5433:5432 postgres:17-alpine
+cd web
+echo DATABASE_URL=postgres://postgres:figrano@127.0.0.1:5433/figrano > .env.local
+npm install
+npm run migrate   # com DATABASE_URL no ambiente
+npm run dev
+```
+
+No app desktop, use `http://127.0.0.1:3000` como servidor em Ajustes → Pedido online → Servidor.
+
 ## O que o app faz
 
 - **Robô por regras:** saudação com menu numerado, cardápio, horário, endereço, status do pedido e o fluxo completo de pedido (itens por número, entrega ou retirada, endereço, pagamento, troco, confirmação).

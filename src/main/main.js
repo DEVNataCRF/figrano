@@ -15,6 +15,7 @@ const { SerialQueue, SendQueue } = require('./queues');
 const { WhatsApp } = require('./whatsapp');
 const { iconPng } = require('./icon');
 const { startUpdater } = require('./updater');
+const { OnlineSync } = require('./online');
 
 const PROBE = process.argv.includes('--probe');
 // Os dois modos de teste usam uma pasta de dados temporária e não tocam nos dados reais.
@@ -40,13 +41,16 @@ let sendQueue = null;
 let quitting = false;
 let lastAiError = '';
 let updater = null;
+let online = null;
+// Servidor padrão da página de pedidos; dá para trocar em Ajustes.
+const DEFAULT_ONLINE_API = process.env.FIGRANO_ONLINE_API || 'https://figrano.vercel.app';
 let updateReady = ''; // versão já baixada, esperando o app fechar
 const receiveQueue = new SerialQueue();
 
 // ------------------------------------------------------------- chave de API
 
-function readApiKey() {
-  const stored = store.settings.ai.apiKeyEncrypted;
+/** Segredos (chave de API, token da loja) ficam criptografados pelo Windows. */
+function decryptSecret(stored) {
   if (!stored) return '';
   try {
     if (stored.startsWith('plain:')) return stored.slice(6);
@@ -56,16 +60,17 @@ function readApiKey() {
   }
 }
 
-function writeApiKey(key) {
-  const clean = String(key || '').trim();
-  let stored = '';
-  if (clean) {
-    stored = safeStorage.isEncryptionAvailable()
-      ? safeStorage.encryptString(clean).toString('base64')
-      : `plain:${clean}`;
-  }
-  store.updateSettings('ai', { apiKeyEncrypted: stored });
+function encryptSecret(value) {
+  const clean = String(value || '').trim();
+  if (!clean) return '';
+  return safeStorage.isEncryptionAvailable()
+    ? safeStorage.encryptString(clean).toString('base64')
+    : `plain:${clean}`;
 }
+
+const readApiKey = () => decryptSecret(store.settings.ai.apiKeyEncrypted);
+const writeApiKey = (key) => store.updateSettings('ai', { apiKeyEncrypted: encryptSecret(key) });
+const readOnlineToken = () => decryptSecret(store.settings.online.tokenEncrypted);
 
 // ----------------------------------------------------------------- utilidades
 
@@ -156,10 +161,36 @@ function onWhatsappMessage(msg) {
   }).catch((error) => console.error('[robô] falha ao processar mensagem:', error));
 }
 
+// ------------------------------------------------------------ pedido online
+
+/** Traz para o painel um pedido feito na página e avisa o cliente no WhatsApp. */
+async function importOnlineOrder(remote) {
+  // O código do link aponta a conversa certa; sem ele, procura pelo telefone digitado.
+  const chatId = online.chatIdForRef(remote.ref) || await chatIdFromPhone(remote.customer?.phone);
+  const order = store.createOrder({
+    customer: { chatId, name: remote.customer?.name, phone: remote.customer?.phone },
+    items: remote.items,
+    mode: remote.mode,
+    address: remote.address,
+    payment: remote.payment,
+    changeFor: remote.changeFor,
+    notes: remote.notes,
+    source: 'online',
+    onlineId: remote.id,
+  });
+  notify(`Novo pedido #${order.number} pelo site`, `${order.customer.name} · ${money(order.total)}`, 'orders');
+  if (chatId && store.settings.bot.status !== 'inactive') {
+    sendToChat(chatId, [
+      `Recebemos seu pedido #${order.number} feito pelo site, no total de ${money(order.total)}. Vamos avisando cada etapa por aqui.`,
+    ], { respectsPause: false });
+  }
+  return order;
+}
+
 // ------------------------------------------------------------------------ API
 
 function publicState() {
-  const { ai: aiSettings, ...settings } = store.settings;
+  const { ai: aiSettings, online: onlineSettings, ...settings } = store.settings;
   const wa = whatsapp ? whatsapp.snapshot() : { state: 'loading', detail: '', me: null, activeChat: null };
   if (wa.activeChat) {
     wa.activeChat = { ...wa.activeChat, pausedUntil: store.pauseUntil(wa.activeChat.chatId) };
@@ -175,6 +206,14 @@ function publicState() {
         ollamaUrl: aiSettings.ollamaUrl,
         ollamaModel: aiSettings.ollamaModel,
         lastError: lastAiError,
+      },
+      online: {
+        enabled: onlineSettings.enabled,
+        apiUrl: onlineSettings.apiUrl || DEFAULT_ONLINE_API,
+        slug: onlineSettings.slug,
+        url: onlineSettings.url,
+        connected: Boolean(online?.active() && online.lastOkAt && !online.lastError),
+        lastError: online?.lastError || '',
       },
     },
     menu: store.menu,
@@ -248,9 +287,29 @@ const api = {
     if (text && order.customer.chatId && store.settings.bot.status !== 'inactive') {
       sendToChat(order.customer.chatId, [text], { respectsPause: false });
     }
+    online?.pushStatus(order);
     return order;
   },
   'orders:print': (id) => printOrder(id),
+
+  'online:activate': async ({ apiUrl, slug }) => {
+    const cleanSlug = String(slug || '').trim().toLowerCase();
+    const data = await online.register(apiUrl || DEFAULT_ONLINE_API, cleanSlug);
+    store.updateSettings('online', {
+      enabled: true, slug: data.slug, url: data.url, tokenEncrypted: encryptSecret(data.token),
+    });
+    online.start();
+    return data.url;
+  },
+  'online:openPage': () => {
+    const { url } = store.settings.online;
+    if (/^https?:\/\//.test(url)) shell.openExternal(url);
+  },
+  'online:setEnabled': (enabled) => {
+    if (enabled && !readOnlineToken()) throw new Error('Ative o pedido online primeiro.');
+    store.updateSettings('online', { enabled: Boolean(enabled) });
+    if (enabled) online.start(); else online.stop();
+  },
 
   'handoffs:open': async (id) => {
     const handoff = store.handoffs.find((h) => h.id === id);
@@ -514,7 +573,13 @@ if (!app.requestSingleInstanceLock()) {
 
     store = new Store(path.join(app.getPath('userData'), 'figrano-dados.json'));
     ai = new AiResponder({ store, getApiKey: readApiKey });
-    engine = new BotEngine({ store, ai });
+    online = new OnlineSync({
+      store,
+      getToken: readOnlineToken,
+      importOrder: importOnlineOrder,
+      getWhatsapp: () => whatsapp?.me?.phone || '',
+    });
+    engine = new BotEngine({ store, ai, onlineLink: (chatId) => online.linkFor(chatId) });
 
     registerApi();
     createWindow();
@@ -530,10 +595,13 @@ if (!app.requestSingleInstanceLock()) {
 
     const push = (topic) => { if (win && !win.isDestroyed()) win.webContents.send('state:changed', topic); };
     store.onChange(push);
+    // Cardápio e dados da loja vão para a página sempre que mudam.
+    store.onChange((topic) => { if (topic === 'menu' || topic === 'settings') online.scheduleSync(); });
     whatsapp.on('state', (state) => {
       push('whatsapp');
       if (TEST_LOG) console.log(`[teste] whatsapp=${state} ${whatsapp.detail || ''}`);
       if (state === 'ready' && SEND_TEST) runSendTest(SEND_TEST);
+      if (state === 'ready') online.scheduleSync(); // envia o número do WhatsApp da loja
       if (state === 'ready' && store.settings.bot.autoArchive) {
         whatsapp.call('archiveOld', Number(store.settings.bot.archiveDays) || 60).catch(() => {});
       }
@@ -549,9 +617,10 @@ if (!app.requestSingleInstanceLock()) {
       whatsapp.create();
       createTray();
       startAutoUpdate();
+      online.start();
     }
   });
 
-  app.on('before-quit', () => { quitting = true; store?.flush(); });
+  app.on('before-quit', () => { quitting = true; online?.stop(); store?.flush(); });
   app.on('window-all-closed', () => { if (SMOKE) app.quit(); });
 }

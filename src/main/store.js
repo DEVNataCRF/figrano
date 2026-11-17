@@ -48,12 +48,20 @@ function defaultData() {
         ollamaThink: true, // o modelo pensa antes de responder: mais lento, mas usa as ferramentas direito
       },
       app: { autoStart: false },
+      online: {
+        enabled: false,
+        apiUrl: '', // servidor da página de pedidos
+        slug: '',
+        url: '', // endereço público da página da loja
+        tokenEncrypted: '',
+      },
     },
     menu: { categories: [] },
     orders: [],
     orderSeq: 0,
     handoffs: [],
     pauses: {},
+    links: {}, // código do link da página -> conversa do WhatsApp
   };
 }
 
@@ -189,7 +197,9 @@ class Store {
 
   get orders() { return this.data.orders; }
 
-  createOrder({ customer, items, mode, address = '', payment = '', changeFor = null, notes = '', source = 'bot' }) {
+  createOrder({
+    customer, items, mode, address = '', payment = '', changeFor = null, notes = '', source = 'bot', onlineId = null,
+  }) {
     if (!Array.isArray(items) || items.length === 0) throw new Error('O pedido precisa de ao menos um item.');
     const lines = items.map((line) => ({
       name: String(line.name),
@@ -220,6 +230,7 @@ class Store {
       total: subtotal + fee,
       status: 'new',
       source,
+      ...(onlineId ? { onlineId } : {}),
       createdAt: now,
       updatedAt: now,
     };
@@ -236,6 +247,11 @@ class Store {
     order.updatedAt = Date.now();
     this.changed('orders');
     return order;
+  }
+
+  /** Pedido local que veio da página, pelo id do servidor. */
+  orderByOnlineId(onlineId) {
+    return this.data.orders.find((o) => o.onlineId === onlineId) || null;
   }
 
   lastOrderOf(chatId) {

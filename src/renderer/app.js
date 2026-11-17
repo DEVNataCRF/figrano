@@ -119,7 +119,7 @@ function orderCard(order) {
   const pay = `${esc(order.payment)}${order.changeFor ? `, troco para ${money(order.changeFor)}` : ''}`;
   return `
     <article class="order ${order.status === 'canceled' ? 'order--canceled' : ''}" data-order="${order.id}">
-      <div class="order__top"><span class="order__num">#${order.number}</span><span class="order__time">${clock(order.createdAt)}</span></div>
+      <div class="order__top"><span class="order__num">#${order.number}</span>${order.source === 'online' ? ' <span class="tag tag--ok">Site</span>' : ''}<span class="order__time">${clock(order.createdAt)}</span></div>
       <div class="order__who">${esc(order.customer.name)}</div>
       <ul>${items}</ul>
       <div class="order__meta">${where}</div>
@@ -437,6 +437,8 @@ function renderSettings() {
         </div>
       </form>
 
+${onlinePanel(state.settings.online)}
+
       <form class="panel" data-form="ai">
         <h2>Inteligência artificial</h2>
         <p>Com a IA ligada, a atendente virtual entende frases livres como "duas calabresas sem cebola para entregar". Sem ela, o cliente pede pelos números do cardápio.</p>
@@ -475,6 +477,40 @@ function renderSettings() {
     </div>`;
 }
 
+/** Painel de Ajustes > Pedido online. */
+function onlinePanel(online) {
+  if (!online.url) {
+    return `
+      <form class="panel" data-form="online">
+        <h2>Pedido online</h2>
+        <p>A loja ganha uma página com o cardápio onde o cliente monta o pedido sozinho. O robô passa a mandar o link da página em vez da lista inteira, e os pedidos caem aqui no painel. Este computador precisa estar ligado com o Figrano aberto para a página aceitar pedidos.</p>
+        <label class="field"><span>Endereço da página</span>
+          <input type="text" name="slug" placeholder="cantina-do-ze" pattern="[a-z0-9-]{3,40}" required autocomplete="off">
+          <small>Letras minúsculas, números e hífen. Fica assim: ${esc(online.apiUrl)}/<b>endereço</b></small>
+        </label>
+        <details><summary>Servidor</summary>
+          <label class="field"><span>Endereço do servidor</span><input type="text" name="apiUrl" value="${esc(online.apiUrl)}" autocomplete="off"></label>
+        </details>
+        <div class="panel__foot"><button class="btn btn--primary">Ativar pedido online</button><span class="panel__msg"></span></div>
+      </form>`;
+  }
+  const status = !online.enabled ? 'Pausado: a página mostra o cardápio, mas não aceita pedidos.'
+    : online.lastError ? `Sem conexão: ${online.lastError}`
+      : online.connected ? 'Conectado. Pedidos novos chegam em até 5 segundos.' : 'Conectando…';
+  return `
+    <form class="panel" data-form="online">
+      <h2>Pedido online</h2>
+      <p>Link da sua página. O robô envia este link quando o cliente pede o cardápio.</p>
+      <label class="field"><span>Link</span><input type="text" readonly value="${esc(online.url)}" data-online-url></label>
+      <label class="check"><input type="checkbox" name="enabled" ${online.enabled ? 'checked' : ''} data-online-toggle> Receber pedidos pela página</label>
+      <div class="panel__foot">
+        <button type="button" class="btn" data-online-copy>Copiar link</button>
+        <button type="button" class="btn" data-online-open>Abrir página</button>
+        <span class="panel__msg" ${online.enabled && online.lastError ? 'data-kind="error"' : ''}>${esc(status)}</span>
+      </div>
+    </form>`;
+}
+
 /** Valores do formulário de IA; a chave só vai quando foi preenchida. */
 function aiFormValues(form) {
   const data = new FormData(form);
@@ -498,7 +534,17 @@ async function refreshAiForm(form) {
   if (list) list.innerHTML = models.map((name) => `<option value="${esc(name)}">`).join('');
 }
 
-document.addEventListener('change', (event) => {
+document.addEventListener('change', async (event) => {
+  if (event.target.matches?.('[data-online-toggle]')) {
+    try {
+      await api.call('online:setEnabled', event.target.checked);
+      renderSettings();
+    } catch (error) {
+      event.target.checked = !event.target.checked;
+      toast(errorText(error));
+    }
+    return;
+  }
   const form = event.target.closest?.('form[data-form="ai"]');
   if (form && event.target.name === 'provider') refreshAiForm(form);
 });
@@ -532,6 +578,12 @@ async function saveSettings(form) {
         autoArchive: data.has('autoArchive'),
         archiveDays: Math.min(365, Math.max(1, Number(data.get('archiveDays')) || 60)),
       });
+    } else if (kind === 'online') {
+      say('Ativando…', '');
+      const url = await api.call('online:activate', { slug: String(data.get('slug') || ''), apiUrl: String(data.get('apiUrl') || '') });
+      renderSettings();
+      toast(`Página no ar: ${url}`);
+      return;
     } else if (kind === 'ai') {
       await api.call('ai:configure', aiFormValues(form));
       form.elements.apiKey.value = '';
@@ -645,6 +697,15 @@ document.addEventListener('click', async (event) => {
   if ('archiveNow' in d) {
     const count = await call('wa:archiveOld');
     if (count !== undefined) toast(count ? `${count} conversas arquivadas.` : 'Nenhuma conversa antiga para arquivar.');
+    return undefined;
+  }
+  if ('onlineCopy' in d) {
+    const url = $('[data-online-url]')?.value || '';
+    try { await navigator.clipboard.writeText(url); toast('Link copiado.'); } catch { $('[data-online-url]')?.select(); }
+    return undefined;
+  }
+  if ('onlineOpen' in d) {
+    await call('online:openPage');
     return undefined;
   }
   if ('aiTest' in d) {

@@ -70,11 +70,13 @@ class BotEngine {
    * @param {import('../store').Store} deps.store
    * @param {{available: () => boolean, reply: Function}|null} [deps.ai]
    * @param {() => Date} [deps.now]
+   * @param {(chatId: string) => string|null} [deps.onlineLink] link da página de pedido, se ligada
    */
-  constructor({ store, ai = null, now = () => new Date() }) {
+  constructor({ store, ai = null, now = () => new Date(), onlineLink = () => null }) {
     this.store = store;
     this.ai = ai;
     this.now = now;
+    this.onlineLink = onlineLink;
     this.sessions = new Map();
   }
 
@@ -219,8 +221,23 @@ class BotEngine {
     return true;
   }
 
+  /** Mensagem com o link da página de pedido, ou null se ela não estiver ligada. */
+  onlineMenuText(session) {
+    const link = this.onlineLink(session.chatId);
+    if (!link) return null;
+    return `Veja o cardápio e faça seu pedido por aqui:
+${link}
+
+Se preferir, pode pedir por esta conversa mesmo.`;
+  }
+
   startOrdering(session, out) {
     if (this.blockIfClosed(session, out)) return;
+    const online = this.onlineMenuText(session);
+    if (online) {
+      out.replies.push(online);
+      return;
+    }
     const items = this.store.numberedItems();
     out.replies.push(menuText(items));
     if (items.length === 0) return;
