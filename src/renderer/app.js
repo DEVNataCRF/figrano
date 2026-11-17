@@ -81,7 +81,11 @@ function renderPage(entering = false) {
   else if (page === 'menu') renderMenu();
   else if (page === 'handoffs') renderHandoffs();
   else if (page === 'whatsapp') renderChatbar();
-  else if (page === 'settings' && entering) renderSettings();
+  else if (page === 'settings' && entering) {
+    renderSettings();
+    const aiForm = $('form[data-form="ai"]');
+    if (aiForm) refreshAiForm(aiForm);
+  }
 }
 
 // ------------------------------------------------------------------- pedidos
@@ -435,15 +439,29 @@ function renderSettings() {
 
       <form class="panel" data-form="ai">
         <h2>Inteligência artificial</h2>
-        <p>Com a IA ligada, o robô entende frases livres como "duas calabresas sem cebola para entregar". Sem ela, o cliente pede pelos números do cardápio. Cada mensagem tratada pela IA é cobrada na sua conta da Anthropic.</p>
+        <p>Com a IA ligada, a atendente virtual entende frases livres como "duas calabresas sem cebola para entregar". Sem ela, o cliente pede pelos números do cardápio.</p>
         <label class="check"><input type="checkbox" name="enabled" ${ai.enabled ? 'checked' : ''}> Usar IA para mensagens livres</label>
-        <label class="field"><span>Chave de API da Anthropic</span>
+        <label class="field"><span>Onde a IA roda</span>
+          <select name="provider">
+            <option value="ollama" ${ai.provider === 'ollama' ? 'selected' : ''}>Neste computador (Ollama, sem custo por mensagem)</option>
+            <option value="anthropic" ${ai.provider !== 'ollama' ? 'selected' : ''}>Na nuvem (Anthropic, cobrado por mensagem)</option>
+          </select>
+        </label>
+        <div data-ai-provider="ollama" ${ai.provider === 'ollama' ? '' : 'hidden'}>
+          <label class="field"><span>Modelo do Ollama</span>
+            <input type="text" name="ollamaModel" list="ollama-models" value="${esc(ai.ollamaModel)}" autocomplete="off">
+            <datalist id="ollama-models"></datalist>
+            <small>Precisa aceitar ferramentas (ex.: qwen3.5:9b). O Ollama tem que estar aberto.</small>
+          </label>
+          <label class="field"><span>Endereço do Ollama</span><input type="text" name="ollamaUrl" value="${esc(ai.ollamaUrl)}" autocomplete="off"></label>
+        </div>
+        <label class="field" data-ai-provider="anthropic" ${ai.provider === 'ollama' ? 'hidden' : ''}><span>Chave de API da Anthropic</span>
           <input type="password" name="apiKey" placeholder="${ai.hasKey ? 'Chave salva. Preencha só para trocar.' : 'sk-ant-...'}" autocomplete="off">
           <small>Fica guardada neste computador, criptografada pelo Windows.</small>
         </label>
         <div class="panel__foot">
           <button class="btn btn--primary">Salvar IA</button>
-          <button type="button" class="btn" data-ai-test>Testar chave</button>
+          <button type="button" class="btn" data-ai-test>Testar</button>
           <span class="panel__msg" ${ai.lastError ? 'data-kind="error"' : ''}>${esc(ai.lastError ? `Última falha: ${ai.lastError}` : '')}</span>
         </div>
       </form>
@@ -456,6 +474,34 @@ function renderSettings() {
       </form>
     </div>`;
 }
+
+/** Valores do formulário de IA; a chave só vai quando foi preenchida. */
+function aiFormValues(form) {
+  const data = new FormData(form);
+  const apiKey = String(data.get('apiKey') || '').trim();
+  return {
+    enabled: data.has('enabled'),
+    provider: String(data.get('provider')),
+    ollamaModel: String(data.get('ollamaModel') || '').trim(),
+    ollamaUrl: String(data.get('ollamaUrl') || '').trim(),
+    ...(apiKey ? { apiKey } : {}),
+  };
+}
+
+/** Mostra os campos do provedor escolhido e sugere os modelos instalados no Ollama. */
+async function refreshAiForm(form) {
+  const provider = form.elements.provider.value;
+  for (const el of form.querySelectorAll('[data-ai-provider]')) el.hidden = el.dataset.aiProvider !== provider;
+  if (provider !== 'ollama') return;
+  const models = await api.call('ai:models').catch(() => []);
+  const list = $('#ollama-models', form);
+  if (list) list.innerHTML = models.map((name) => `<option value="${esc(name)}">`).join('');
+}
+
+document.addEventListener('change', (event) => {
+  const form = event.target.closest?.('form[data-form="ai"]');
+  if (form && event.target.name === 'provider') refreshAiForm(form);
+});
 
 async function saveSettings(form) {
   const data = new FormData(form);
@@ -487,8 +533,7 @@ async function saveSettings(form) {
         archiveDays: Math.min(365, Math.max(1, Number(data.get('archiveDays')) || 60)),
       });
     } else if (kind === 'ai') {
-      const apiKey = String(data.get('apiKey')).trim();
-      await api.call('ai:configure', { enabled: data.has('enabled'), ...(apiKey ? { apiKey } : {}) });
+      await api.call('ai:configure', aiFormValues(form));
       form.elements.apiKey.value = '';
     } else if (kind === 'app') {
       await api.call('settings:update', 'app', { autoStart: data.has('autoStart') });
@@ -605,11 +650,12 @@ document.addEventListener('click', async (event) => {
   if ('aiTest' in d) {
     const form = target.closest('form');
     const message = $('.panel__msg', form);
-    const apiKey = form.elements.apiKey.value.trim();
-    message.textContent = 'Testando…';
+    const { enabled, ...config } = aiFormValues(form);
+    message.textContent = config.provider === 'ollama' ? 'Testando (a primeira vez carrega o modelo)…' : 'Testando…';
     message.dataset.kind = '';
     try {
-      if (apiKey) { await api.call('ai:configure', { apiKey }); form.elements.apiKey.value = ''; }
+      await api.call('ai:configure', config);
+      form.elements.apiKey.value = '';
       message.textContent = await api.call('ai:test');
       message.dataset.kind = 'ok';
     } catch (error) {

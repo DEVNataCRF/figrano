@@ -39,7 +39,14 @@ function defaultData() {
         autoArchive: false,
         archiveDays: 60,
       },
-      ai: { enabled: false, apiKeyEncrypted: '' },
+      ai: {
+        enabled: false,
+        provider: 'anthropic', // 'anthropic' (nuvem, com chave) ou 'ollama' (modelo local)
+        apiKeyEncrypted: '',
+        ollamaUrl: 'http://127.0.0.1:11434',
+        ollamaModel: 'qwen3.5:9b',
+        ollamaThink: true, // o modelo pensa antes de responder: mais lento, mas usa as ferramentas direito
+      },
       app: { autoStart: false },
     },
     menu: { categories: [] },

@@ -166,7 +166,17 @@ function publicState() {
   }
   return {
     version: app.getVersion(),
-    settings: { ...settings, ai: { enabled: aiSettings.enabled, hasKey: Boolean(aiSettings.apiKeyEncrypted), lastError: lastAiError } },
+    settings: {
+      ...settings,
+      ai: {
+        enabled: aiSettings.enabled,
+        provider: aiSettings.provider,
+        hasKey: Boolean(aiSettings.apiKeyEncrypted),
+        ollamaUrl: aiSettings.ollamaUrl,
+        ollamaModel: aiSettings.ollamaModel,
+        lastError: lastAiError,
+      },
+    },
     menu: store.menu,
     orders: store.orders,
     handoffs: store.handoffs,
@@ -182,17 +192,41 @@ const api = {
     store.updateSettings(section, patch);
     if (section === 'app' && app.isPackaged) app.setLoginItemSettings({ openAtLogin: Boolean(patch.autoStart) });
   },
-  'ai:configure': ({ enabled, apiKey }) => {
+  'ai:configure': ({ enabled, apiKey, provider, ollamaUrl, ollamaModel }) => {
     if (apiKey !== undefined) writeApiKey(apiKey);
-    if (enabled !== undefined) store.updateSettings('ai', { enabled: Boolean(enabled) });
+    const patch = {};
+    if (enabled !== undefined) patch.enabled = Boolean(enabled);
+    if (provider !== undefined) {
+      if (!['anthropic', 'ollama'].includes(provider)) throw new Error('Provedor de IA inválido.');
+      patch.provider = provider;
+    }
+    if (ollamaUrl !== undefined) {
+      const url = String(ollamaUrl).trim();
+      if (!/^https?:\/\/[^\s]+$/.test(url)) throw new Error('Endereço do Ollama inválido.');
+      patch.ollamaUrl = url;
+    }
+    if (ollamaModel !== undefined) {
+      const model = String(ollamaModel).trim();
+      if (!model) throw new Error('Informe o modelo do Ollama.');
+      patch.ollamaModel = model;
+    }
+    if (Object.keys(patch).length) store.updateSettings('ai', patch);
     lastAiError = '';
   },
+  'ai:models': async () => {
+    try {
+      return await ai.ollamaModels();
+    } catch {
+      return [];
+    }
+  },
   'ai:test': async () => {
-    if (!readApiKey()) throw new Error('Informe a chave de API antes de testar.');
+    const usingOllama = ai.provider === 'ollama';
+    if (!usingOllama && !readApiKey()) throw new Error('Informe a chave de API antes de testar.');
     try {
       await ai.test();
       lastAiError = '';
-      return 'Chave válida. A IA está pronta.';
+      return usingOllama ? 'Ollama respondeu. A atendente virtual está pronta.' : 'Chave válida. A IA está pronta.';
     } catch (error) {
       throw new Error(AiResponder.describeError(error));
     }
