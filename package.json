@@ -8,13 +8,56 @@
     "start": "electron .",
     "smoke": "electron . --smoke",
     "probe": "electron . --probe",
-    "test": "node --test"
+    "test": "node --test",
+    "icon": "node scripts/make-icon.js",
+    "dist": "npm run icon && electron-builder --win --publish never",
+    "release": "npm test && npm run icon && electron-builder --win --publish always"
   },
   "dependencies": {
     "@anthropic-ai/sdk": "^1.9.0",
-    "@wppconnect/wa-js": "^4.8.0"
+    "@wppconnect/wa-js": "^4.8.0",
+    "electron-updater": "^6.8.11"
   },
   "devDependencies": {
-    "electron": "^45.3.3"
+    "electron": "^45.3.3",
+    "electron-builder": "^26.18.0"
+  },
+  "author": "Figrano",
+  "build": {
+    "appId": "br.figrano.app",
+    "productName": "Figrano",
+    "directories": {
+      "output": "dist",
+      "buildResources": "build"
+    },
+    "files": [
+      "src/**/*",
+      "package.json"
+    ],
+    "win": {
+      "target": [
+        {
+          "target": "nsis",
+          "arch": [
+            "x64"
+          ]
+        }
+      ],
+      "icon": "build/icon.png"
+    },
+    "nsis": {
+      "oneClick": true,
+      "perMachine": false,
+      "createDesktopShortcut": true,
+      "shortcutName": "Figrano",
+      "artifactName": "Figrano-Setup-${version}.${ext}"
+    },
+    "publish": [
+      {
+        "provider": "github",
+        "owner": "DEVNataCRF",
+        "repo": "figrano-releases"
+      }
+    ]
   }
 }

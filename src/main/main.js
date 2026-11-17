@@ -14,6 +14,7 @@ const { menuText, statusNotification, money } = require('./bot/format');
 const { SerialQueue, SendQueue } = require('./queues');
 const { WhatsApp } = require('./whatsapp');
 const { iconPng } = require('./icon');
+const { startUpdater } = require('./updater');
 
 const PROBE = process.argv.includes('--probe');
 // Os dois modos de teste usam uma pasta de dados temporária e não tocam nos dados reais.
@@ -33,6 +34,8 @@ let whatsapp = null;
 let sendQueue = null;
 let quitting = false;
 let lastAiError = '';
+let updater = null;
+let updateReady = ''; // versão já baixada, esperando o app fechar
 const receiveQueue = new SerialQueue();
 
 // ------------------------------------------------------------- chave de API
@@ -315,12 +318,32 @@ function createWindow() {
 function createTray() {
   tray = new Tray(nativeImage.createFromBuffer(iconPng(32)));
   tray.setToolTip('Figrano');
+  refreshTrayMenu();
+  tray.on('click', showWindow);
+}
+
+function refreshTrayMenu() {
+  if (!tray) return;
   tray.setContextMenu(Menu.buildFromTemplate([
     { label: 'Abrir o Figrano', click: showWindow },
+    ...(updateReady ? [{
+      label: `Reiniciar e atualizar para a versão ${updateReady}`,
+      click: () => { quitting = true; store?.flush(); updater.install(); },
+    }] : []),
     { type: 'separator' },
     { label: 'Sair', click: () => { quitting = true; app.quit(); } },
   ]));
-  tray.on('click', showWindow);
+}
+
+function startAutoUpdate() {
+  if (!app.isPackaged) return;
+  updater = startUpdater({
+    onReady: (version) => {
+      updateReady = version;
+      refreshTrayMenu();
+      notify('Atualização pronta', `A versão ${version} será instalada quando o Figrano for fechado.`);
+    },
+  });
 }
 
 const wait = (ms) => new Promise((resolve) => setTimeout(resolve, ms));
@@ -446,6 +469,7 @@ if (!app.requestSingleInstanceLock()) {
     } else {
       whatsapp.create();
       createTray();
+      startAutoUpdate();
     }
   });
 

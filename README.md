@@ -21,6 +21,18 @@ Outros comandos:
 
 Os dois últimos usam uma pasta de dados temporária e não tocam nos dados reais.
 
+## Instalador e atualização
+
+| Comando | O que faz |
+|---|---|
+| `npm run dist` | Gera `dist/Figrano-Setup-<versão>.exe` sem publicar |
+| `npm run release` | Roda os testes, gera o instalador e publica no GitHub Releases |
+
+- O app instalado procura versão nova ao abrir e a cada 4 horas, baixa em segundo plano e instala ao fechar (ou pelo item "Reiniciar e atualizar" da bandeja).
+- As versões são publicadas em `DEVNataCRF/figrano-releases`, que precisa ser um repositório **público** só com os instaladores: o app instalado não tem como baixar de repositório privado. O código continua no repositório privado.
+- Para publicar: aumente `version` no `package.json` e rode `npm run release` com um token do GitHub em `GH_TOKEN`.
+- Assinatura de código: com um certificado, defina `CSC_LINK` (arquivo `.pfx`) e `CSC_KEY_PASSWORD` antes de gerar. Sem ele o instalador sai sem assinatura e o Windows mostra o aviso do SmartScreen.
+
 ## O que o app faz
 
 - **Robô por regras:** saudação com menu numerado, cardápio, horário, endereço, status do pedido e o fluxo completo de pedido (itens por número, entrega ou retirada, endereço, pagamento, troco, confirmação).
