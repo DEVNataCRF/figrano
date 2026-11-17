@@ -71,3 +71,14 @@ test('Ollama fora do ar: as regras assumem e o erro é registrado', async () => 
   const error = out.effects.find((e) => e.type === 'ai_error');
   assert.match(error.message, /Ollama não está rodando/);
 });
+
+test('Ollama: a saudação vem antes do cardápio', async () => {
+  const { engine } = setup([
+    { role: 'assistant', content: '', tool_calls: [{ function: { name: 'send_menu', arguments: {} } }] },
+    { role: 'assistant', content: 'Boa noite! Segue nosso cardápio:' },
+  ]);
+  const out = await engine.handle({ chatId: '1@lid', type: 'chat', text: 'boa noite, o que vocês têm hoje' });
+  assert.equal(out.replies.length, 2);
+  assert.equal(out.replies[0], 'Boa noite! Segue nosso cardápio:');
+  assert.match(out.replies[1], /Calabresa/);
+});

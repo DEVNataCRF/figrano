@@ -214,11 +214,12 @@ class AiResponder {
     return this.client;
   }
 
-  runTool(name, input, { engine, session, out }) {
+  runTool(name, input, { engine, session, out, deferred }) {
     switch (name) {
       case 'send_menu':
-        out.replies.push(menuText(this.store.numberedItems()));
-        return 'Cardápio enviado ao cliente em uma mensagem separada. Não repita a lista.';
+        // Vai depois do texto da atendente: primeiro a saudação, depois a lista.
+        deferred.push(menuText(this.store.numberedItems()));
+        return 'O cardápio será enviado logo depois da sua resposta, numa mensagem separada. Não repita a lista.';
       case 'add_items':
         if (!Array.isArray(input.items)) return 'Entrada inválida.';
         return engine.addItems(session, input.items).message;
@@ -279,6 +280,7 @@ class AiResponder {
 
     const client = this.getClient();
     const texts = [];
+    const deferred = [];
     for (let step = 0; step < MAX_STEPS; step++) {
       const response = await client.beta.messages.create({
         model: MODEL,
@@ -305,11 +307,11 @@ class AiResponder {
         content: toolUses.map((tool) => ({
           type: 'tool_result',
           tool_use_id: tool.id,
-          content: this.runTool(tool.name, tool.input || {}, { engine, session, out }),
+          content: this.runTool(tool.name, tool.input || {}, { engine, session, out, deferred }),
         })),
       });
     }
-    return texts;
+    return [...texts, ...deferred];
   }
 
   // ------------------------------------------------------------------ Ollama
@@ -347,9 +349,11 @@ class AiResponder {
     return (data.models || []).map((model) => model.name);
   }
 
-  async replyOllama(messages, context) {
+  async replyOllama(messages, baseContext) {
     const chat = [{ role: 'system', content: systemPrompt(this.store) }, ...messages];
     const texts = [];
+    const deferred = [];
+    const context = { ...baseContext, deferred };
     for (let step = 0; step < MAX_STEPS; step++) {
       const data = await this.ollamaFetch('/api/chat', {
         model: this.store.settings.ai.ollamaModel,
@@ -376,7 +380,7 @@ class AiResponder {
         chat.push({ role: 'tool', tool_name: name, content: this.runTool(name, input, context) });
       }
     }
-    return texts;
+    return [...texts, ...deferred];
   }
 
   /** Mensagem legível para um erro da API, para mostrar nas configurações. */
