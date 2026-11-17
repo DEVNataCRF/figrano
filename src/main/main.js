@@ -19,6 +19,9 @@ const { startUpdater } = require('./updater');
 const PROBE = process.argv.includes('--probe');
 // Os dois modos de teste usam uma pasta de dados temporária e não tocam nos dados reais.
 const SMOKE = process.argv.includes('--smoke') || PROBE;
+// --send-test=<telefone>: roda o app normal com os dados reais e, ao conectar,
+// envia uma mensagem de teste ao número e registra no console o que chegar.
+const SEND_TEST = (process.argv.find((arg) => arg.startsWith('--send-test=')) || '').slice('--send-test='.length);
 const TOP_BAR_COLOR = '#EFECE6';
 const MESSAGE_TYPES = new Set(['chat', 'image', 'ptt', 'location']);
 const STALE_MESSAGE_SECONDS = 120; // ignora histórico que o WhatsApp sincroniza ao conectar
@@ -81,10 +84,22 @@ function showWindow() {
   win.focus();
 }
 
-function chatIdFromPhone(phone) {
+/**
+ * ID de conversa de um telefone digitado (com ou sem DDI). Com o WhatsApp
+ * conectado, pergunta ao servidor qual é o ID real; devolve '' se o número
+ * não tem WhatsApp.
+ */
+async function chatIdFromPhone(phone) {
   const digits = String(phone || '').replace(/\D/g, '');
   if (digits.length < 10) return '';
-  return `${digits.length <= 11 ? `55${digits}` : digits}@c.us`;
+  const full = digits.length <= 11 ? `55${digits}` : digits;
+  if (!whatsapp?.ready) return `${full}@c.us`;
+  try {
+    return (await whatsapp.call('resolvePhone', full)) || '';
+  } catch (error) {
+    console.error('[whatsapp] falha ao consultar número:', error?.message || error);
+    return `${full}@c.us`;
+  }
 }
 
 function sendToChat(chatId, texts, options) {
@@ -111,10 +126,13 @@ function onWhatsappMessage(msg) {
   if (!MESSAGE_TYPES.has(msg.type) || msg.isNew === false) return;
   if (msg.timestamp && Date.now() / 1000 - msg.timestamp > STALE_MESSAGE_SECONDS) return;
 
+  if (SEND_TEST) console.log(`[teste] recebida chat=${chatId} telefone=${msg.phone || '?'} tipo=${msg.type}`);
+
   receiveQueue.push(async () => {
     const out = await engine.handle({
-      chatId, name: msg.name, type: msg.type, text: msg.text, location: msg.location,
+      chatId, phone: msg.phone, name: msg.name, type: msg.type, text: msg.text, location: msg.location,
     });
+    if (SEND_TEST) console.log(`[teste] robô respondeu ${out.replies.length} mensagem(ns); efeitos=${out.effects.map((e) => e.type).join(',') || 'nenhum'}`);
     for (const effect of out.effects) {
       if (effect.type === 'order_created') {
         notify(`Novo pedido #${effect.order.number}`, `${effect.order.customer.name} · ${money(effect.order.total)}`, 'orders');
@@ -179,8 +197,8 @@ const api = {
   'menu:saveItem': (categoryId, item) => store.saveItem(categoryId, item),
   'menu:deleteItem': (categoryId, itemId) => store.deleteItem(categoryId, itemId),
 
-  'orders:create': (input) => {
-    const chatId = input.customer?.chatId || chatIdFromPhone(input.customer?.phone);
+  'orders:create': async (input) => {
+    const chatId = input.customer?.chatId || await chatIdFromPhone(input.customer?.phone);
     return store.createOrder({ ...input, customer: { ...input.customer, chatId }, source: 'manual' });
   },
   'orders:setStatus': async (id, status) => {
@@ -217,8 +235,8 @@ const api = {
   },
   'wa:openChat': async (phoneOrChatId) => {
     if (!whatsapp?.ready) throw new Error('O WhatsApp não está conectado.');
-    const chatId = String(phoneOrChatId).includes('@') ? phoneOrChatId : chatIdFromPhone(phoneOrChatId);
-    if (!chatId) throw new Error('Telefone inválido.');
+    const chatId = String(phoneOrChatId).includes('@') ? phoneOrChatId : await chatIdFromPhone(phoneOrChatId);
+    if (!chatId) throw new Error('Telefone inválido ou sem WhatsApp.');
     await whatsapp.call('openChat', chatId);
   },
   'wa:archiveOld': async () => {
@@ -424,6 +442,25 @@ async function probeWhatsapp() {
   app.exit(whatsapp.state === 'qr' || whatsapp.state === 'ready' ? 0 : 1);
 }
 
+let sendTestDone = false;
+
+/** Envia uma mensagem de teste pelo caminho real (fila com "digitando"). */
+async function runSendTest(phone) {
+  if (sendTestDone) return;
+  sendTestDone = true;
+  const me = whatsapp.me;
+  console.log(`[teste] conectado como ${me?.chatId || '?'}`);
+  const chatId = await chatIdFromPhone(phone);
+  console.log(`[teste] ${phone} -> ${chatId || 'sem WhatsApp'}`);
+  if (!chatId) return;
+  const phoneBack = await whatsapp.call('phoneOf', chatId).catch(() => '');
+  console.log(`[teste] telefone de volta: ${phoneBack || '?'}`);
+  const result = await sendToChat(chatId, [
+    `Teste do Figrano: envio automático (${new Date().toLocaleString('pt-BR')}). Responda "oi" para testar o robô.`,
+  ], { respectsPause: false });
+  console.log(`[teste] envio ${JSON.stringify(result)}`);
+}
+
 // ------------------------------------------------------------------ arranque
 
 if (!app.requestSingleInstanceLock()) {
@@ -455,6 +492,8 @@ if (!app.requestSingleInstanceLock()) {
     store.onChange(push);
     whatsapp.on('state', (state) => {
       push('whatsapp');
+      if (SEND_TEST) console.log(`[teste] whatsapp=${state} ${whatsapp.detail || ''}`);
+      if (state === 'ready' && SEND_TEST) runSendTest(SEND_TEST);
       if (state === 'ready' && store.settings.bot.autoArchive) {
         whatsapp.call('archiveOld', Number(store.settings.bot.archiveDays) || 60).catch(() => {});
       }

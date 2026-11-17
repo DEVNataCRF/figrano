@@ -242,10 +242,14 @@ class Store {
 
   get handoffs() { return this.data.handoffs; }
 
-  addHandoff({ chatId, name, motive = '', priority = 'medium', mood = 'calm' }) {
+  addHandoff({ chatId, name, phone = '', motive = '', priority = 'medium', mood = 'calm' }) {
+    // Sem telefone informado, só IDs "@c.us" servem: "@lid" não é telefone.
+    const digits = String(phone || (String(chatId).endsWith('@c.us') ? String(chatId).split('@')[0] : '')).replace(/\D/g, '');
     const existing = this.data.handoffs.find((h) => h.chatId === chatId);
     if (existing) {
-      Object.assign(existing, { motive: motive || existing.motive, priority, mood, updatedAt: Date.now() });
+      Object.assign(existing, {
+        motive: motive || existing.motive, priority, mood, phone: digits || existing.phone, updatedAt: Date.now(),
+      });
       this.changed('handoffs');
       return existing;
     }
@@ -253,7 +257,7 @@ class Store {
       id: randomUUID(),
       chatId,
       name: String(name || '').trim() || 'Cliente',
-      phone: String(chatId).split('@')[0].replace(/\D/g, ''),
+      phone: digits,
       motive: String(motive),
       priority: ['high', 'medium', 'low'].includes(priority) ? priority : 'medium',
       mood: ['calm', 'frustrated', 'hostile'].includes(mood) ? mood : 'calm',

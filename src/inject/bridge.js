@@ -39,6 +39,21 @@
     }
   };
 
+  /**
+   * Telefone (só dígitos) de uma conversa individual. Conversas novas chegam
+   * como "<número interno>@lid", que não é o telefone: consulta o mapeamento.
+   */
+  const phoneOf = async (chatId) => {
+    if (chatId.endsWith('@c.us')) return chatId.split('@')[0];
+    if (!chatId.endsWith('@lid')) return '';
+    try {
+      const entry = await WPP.contact.getPnLidEntry(chatId);
+      return (entry && entry.phoneNumber && entry.phoneNumber.id) || '';
+    } catch {
+      return '';
+    }
+  };
+
   const publishState = () => post('state', { state: connState(), me: me() });
 
   const start = () => {
@@ -50,13 +65,14 @@
 
     WPP.on('chat.active_chat', (chat) => post('active_chat', chatInfo(chat)));
 
-    WPP.on('chat.new_message', (msg) => {
+    WPP.on('chat.new_message', async (msg) => {
       try {
         const fromMe = Boolean(msg.id && msg.id.fromMe);
         const chatId = wid(fromMe ? msg.to : msg.from);
         post('message', {
           id: wid(msg.id),
           chatId,
+          phone: fromMe ? '' : await phoneOf(chatId),
           fromMe,
           type: msg.type,
           text: msg.type === 'chat' ? (msg.body || '') : (msg.caption || ''),
@@ -88,6 +104,18 @@
     },
 
     activeChat: () => chatInfo(WPP.chat.getActiveChat()),
+
+    phoneOf,
+
+    /**
+     * ID de conversa de um telefone com DDI, ou null se o número não tem
+     * WhatsApp. Pergunta ao servidor porque o ID real pode diferir do número
+     * digitado (ex.: celulares brasileiros antigos sem o nono dígito).
+     */
+    async resolvePhone(digits) {
+      const result = await WPP.contact.queryWidExists(`${digits}@c.us`);
+      return result && result.wid ? wid(result.wid) : null;
+    },
 
     async openChat(chatId) {
       await WPP.chat.openChatBottom(chatId);

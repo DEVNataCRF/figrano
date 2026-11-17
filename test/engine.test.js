@@ -4,7 +4,7 @@ const test = require('node:test');
 const assert = require('node:assert/strict');
 
 const { Store } = require('../src/main/store');
-const { BotEngine, parseSelection, parseMoney } = require('../src/main/bot/engine');
+const { BotEngine, parseSelection, parseMoney, phoneFromChatId } = require('../src/main/bot/engine');
 const { isOpen } = require('../src/main/bot/format');
 
 const CHAT = '5511999990000@c.us';
@@ -228,4 +228,25 @@ test('mensagem livre vai para a IA quando disponível e cai nas regras se ela fa
   out = await say('e tem alguma coisa sem glúten por aí?');
   assert.equal(out.effects[0].type, 'ai_error');
   assert.match(out.replies[0], /Responda com o número/);
+});
+
+test('conversa @lid usa o telefone informado pelo WhatsApp, não o número interno', async () => {
+  const { store, engine } = setup();
+  const LID = '266318204903671@lid';
+  const say = (text) => engine.handle({ chatId: LID, phone: '5528998826841', name: 'Rui', type: 'chat', text });
+  for (const text of ['1', '1', 'fechar', '2', '1', '1']) await say(text);
+  assert.equal(store.orders.length, 1);
+  assert.equal(store.orders[0].customer.chatId, LID);
+  assert.equal(store.orders[0].customer.phone, '5528998826841');
+
+  await say('quero falar com atendente');
+  assert.equal(store.handoffs[0].phone, '5528998826841');
+});
+
+test('conversa @lid sem telefone conhecido fica sem telefone em vez de um número errado', async () => {
+  const { store, engine } = setup();
+  await engine.handle({ chatId: '999@lid', name: 'Sem número', type: 'chat', text: 'atendente' });
+  assert.equal(store.handoffs[0].phone, '');
+  assert.equal(phoneFromChatId('5511999990000@c.us'), '5511999990000');
+  assert.equal(phoneFromChatId('266318204903671@lid'), '');
 });

@@ -52,6 +52,13 @@ function parseSelection(text) {
   return picks;
 }
 
+const phoneDigits = (value) => String(value || '').replace(/\D/g, '');
+
+/** Só IDs "@c.us" carregam o telefone; "@lid" é um número interno do WhatsApp. */
+function phoneFromChatId(chatId) {
+  return String(chatId || '').endsWith('@c.us') ? phoneDigits(chatId.split('@')[0]) : '';
+}
+
 function parseMoney(text) {
   const match = normalize(text).replace(/r\$/g, '').match(/(\d+(?:[.,]\d{1,2})?)/);
   return match ? Number(match[1].replace(',', '.')) : null;
@@ -105,6 +112,7 @@ class BotEngine {
 
     const session = this.session(msg.chatId);
     session.name = msg.name || session.name || '';
+    session.phone = phoneDigits(msg.phone) || session.phone || phoneFromChatId(msg.chatId);
 
     let text = msg.text || '';
     if (msg.type === 'location' && msg.location) {
@@ -412,7 +420,7 @@ class BotEngine {
     if (cartTotal(session.cart) < store.minOrder) return { ok: false, message: `O pedido mínimo é ${money(store.minOrder)}.` };
 
     const order = this.store.createOrder({
-      customer: { chatId: session.chatId, name: session.name, phone: session.chatId.split('@')[0] },
+      customer: { chatId: session.chatId, name: session.name, phone: session.phone || '' },
       items: session.cart,
       mode: session.mode,
       address: session.address,
@@ -438,7 +446,9 @@ class BotEngine {
   }
 
   requestHuman(session, out, { motive = '', priority = 'medium', mood = 'calm' } = {}) {
-    const handoff = this.store.addHandoff({ chatId: session.chatId, name: session.name, motive, priority, mood });
+    const handoff = this.store.addHandoff({
+      chatId: session.chatId, name: session.name, phone: session.phone, motive, priority, mood,
+    });
     this.store.pauseChat(session.chatId, '24h', this.now().getTime());
     out.effects.push({ type: 'handoff', handoff });
     const message = 'Certo, vou chamar uma pessoa da equipe para continuar com você. Aguarde um instante.';
@@ -462,4 +472,4 @@ class BotEngine {
   }
 }
 
-module.exports = { BotEngine, normalize, parseSelection, parseMoney };
+module.exports = { BotEngine, normalize, parseSelection, parseMoney, phoneFromChatId };
