@@ -85,3 +85,17 @@ test('delayFor cresce com o tamanho do texto e tem teto', () => {
   assert.equal(queue.delayFor('x'.repeat(40)), 2200);
   assert.equal(queue.delayFor('x'.repeat(5000)), 7000);
 });
+
+test('SendQueue envia mesmo se o "digitando" falhar', async () => {
+  const sent = [];
+  const queue = new SendQueue({
+    transport: {
+      typing: async () => { throw new Error('Chat not found'); },
+      send: async (chatId, text) => { sent.push(text); },
+    },
+    sleep: async () => {},
+  });
+  const result = await queue.enqueue('1@c.us', ['oi']);
+  assert.deepEqual(result, { sent: 1, skipped: 0, failed: 0 });
+  assert.deepEqual(sent, ['oi']);
+});

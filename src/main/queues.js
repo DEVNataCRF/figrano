@@ -65,7 +65,8 @@ class SendQueue {
         if (respectsPause && this.isPaused(chatId)) { result.skipped += 1; continue; }
         const delay = this.delayFor(text);
         try {
-          await this.transport.typing(chatId, delay);
+          // "Digitando" é só cosmético: se falhar, a mensagem sai mesmo assim.
+          await Promise.resolve(this.transport.typing(chatId, delay)).catch(() => {});
           await this.sleep(delay);
           if (respectsPause && this.isPaused(chatId)) { result.skipped += 1; continue; }
           this.lastSentAt.set(chatId, Date.now());

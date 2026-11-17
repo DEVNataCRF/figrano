@@ -99,6 +99,8 @@
     },
 
     async typing(chatId, ms) {
+      // markIsComposing exige a conversa já carregada; find a busca ou cria.
+      if (!WPP.chat.get(chatId)) await WPP.chat.find(chatId);
       await WPP.chat.markIsComposing(chatId, ms);
       return true;
     },
