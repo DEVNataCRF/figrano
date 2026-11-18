@@ -4,8 +4,8 @@ const test = require('node:test');
 const assert = require('node:assert/strict');
 
 const { Store } = require('../src/main/store');
-const { BotEngine, parseSelection, parseMoney, phoneFromChatId } = require('../src/main/bot/engine');
-const { isOpen } = require('../src/main/bot/format');
+const { BotEngine, parseSelection, parseMoney, phoneFromChatId } = require('../src/main/robo/engine');
+const { isOpen } = require('../src/main/robo/format');
 
 const CHAT = '5511999990000@c.us';
 // Quarta-feira, 20:00: dentro do horário padrão (18:00 às 23:00).
@@ -177,12 +177,12 @@ test('robô em "só avisos" ou desligado não responde', async () => {
 
 test('status do pedido informa o último pedido do cliente', async () => {
   const { say, store } = setup();
-  assert.match((await say('status')).replies[0], /Não encontrei pedidos/);
+  assert.match((await say('status')).replies[0], /Não encontrei pedido seu/);
   const order = store.createOrder({
     customer: { chatId: CHAT, name: 'Ana' }, items: [{ name: 'Calabresa', qty: 1, price: 40 }], mode: 'pickup', payment: 'Pix',
   });
   store.setOrderStatus(order.id, 'preparing');
-  assert.match((await say('cadê meu pedido')).replies[0], /#1 está em preparo/);
+  assert.match((await say('cadê meu pedido')).replies[0], /#1 está \*em produção\*/);
 });
 
 test('pausa expira sozinha', () => {
@@ -200,7 +200,7 @@ test('pausa expira sozinha', () => {
 test('áudio recebe pedido para escrever', async () => {
   const { say } = setup();
   const out = await say('', { type: 'ptt' });
-  assert.match(out.replies[0], /áudios/);
+  assert.match(out.replies[0], /Não consegui ouvir seu áudio/);
 });
 
 test('localização vira endereço na etapa de entrega', async () => {
@@ -220,12 +220,12 @@ test('mensagem livre vai para a IA quando disponível e cai nas regras se ela fa
     reply: async ({ text }) => { calls.push(text); return ['Temos sim!']; },
   };
   const { say } = setup({ ai });
-  let out = await say('vocês têm alguma opção vegetariana hoje?');
+  let out = await say('me indica alguma coisa boa pra um lanche da tarde');
   assert.deepEqual(out.replies, ['Temos sim!']);
   assert.equal(calls.length, 1);
 
   ai.reply = async () => { throw new Error('sem rede'); };
-  out = await say('e tem alguma coisa sem glúten por aí?');
+  out = await say('e pra criança, o que você indica por aí?');
   assert.equal(out.effects[0].type, 'ai_error');
   assert.match(out.replies[0], /Responda com o número/);
 });

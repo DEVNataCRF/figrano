@@ -4,3 +4,6 @@ probe*.png
 dist/
 build/
 .tmp-shots/
+web/out/
+web/.next/
+panel/

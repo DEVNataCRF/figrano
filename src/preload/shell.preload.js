@@ -13,6 +13,13 @@ contextBridge.exposeInMainWorld('figrano', {
     return () => ipcRenderer.removeListener('state:changed', handler);
   },
 
+  /** Alerta sonoro: 'pedido' ou 'sil'. */
+  onAlert: (listener) => {
+    const handler = (_event, kind) => listener(kind);
+    ipcRenderer.on('alert', handler);
+    return () => ipcRenderer.removeListener('alert', handler);
+  },
+
   /** O processo principal pede para abrir uma seção (ex.: clique numa notificação). */
   onNavigate: (listener) => {
     const handler = (_event, target) => listener(target);

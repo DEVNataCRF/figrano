@@ -107,6 +107,15 @@
 
     activeChat: () => chatInfo(WPP.chat.getActiveChat()),
 
+    /** Áudio de uma mensagem de voz, em base64, para transcrever no PC da loja. */
+    async audioBase64(msgId) {
+      const blob = await WPP.chat.downloadMedia(msgId);
+      const bytes = new Uint8Array(await blob.arrayBuffer());
+      let binary = '';
+      for (let i = 0; i < bytes.length; i += 0x8000) binary += String.fromCharCode.apply(null, bytes.subarray(i, i + 0x8000));
+      return { mimetype: blob.type || 'audio/ogg', base64: btoa(binary) };
+    },
+
     phoneOf,
 
     /**

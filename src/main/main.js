@@ -8,15 +8,17 @@ const fs = require('node:fs');
 const os = require('node:os');
 
 const { Store } = require('./store');
-const { BotEngine } = require('./bot/engine');
-const { AiResponder } = require('./bot/ai');
-const { menuText, statusNotification, money } = require('./bot/format');
+const { BotEngine } = require('./robo/engine');
+const { AiResponder } = require('./ia/ai');
+const { menuText, money } = require('./robo/format');
+const { statusAviso, reviewRequest } = require('./robo/avisos');
 const { SerialQueue, SendQueue } = require('./queues');
 const { WhatsApp } = require('./whatsapp');
 const { iconPng } = require('./icon');
 const { startUpdater } = require('./updater');
-const { OnlineSync } = require('./online');
+const { Platform } = require('./platform');
 const { ImageStore } = require('./images');
+const { transcribeAudio, fixAudioText, buildAudioHint } = require('./transcricao');
 
 const PROBE = process.argv.includes('--probe');
 // Os dois modos de teste usam uma pasta de dados temporária e não tocam nos dados reais.
@@ -26,9 +28,12 @@ const SMOKE = process.argv.includes('--smoke') || PROBE;
 const SEND_TEST = (process.argv.find((arg) => arg.startsWith('--send-test=')) || '').slice('--send-test='.length);
 // --test-log: só registra no console o que chega, sem enviar nada.
 const TEST_LOG = Boolean(SEND_TEST) || process.argv.includes('--test-log');
-const TOP_BAR_COLOR = '#EFECE6';
-const MESSAGE_TYPES = new Set(['chat', 'image', 'ptt', 'location']);
+const TOP_BAR_COLOR = '#FFFFFF';
+const TOP_BAR_HEIGHT = 56;
+const MESSAGE_TYPES = new Set(['chat', 'image', 'ptt', 'audio', 'location']);
 const STALE_MESSAGE_SECONDS = 120; // ignora histórico que o WhatsApp sincroniza ao conectar
+const MENU_RESEND_MS = 30e3; // "Enviar cardápio" de novo para a mesma conversa só depois de 30 s
+const menuSentAt = new Map();
 
 if (SMOKE) app.setPath('userData', fs.mkdtempSync(path.join(os.tmpdir(), 'figrano-smoke-')));
 
@@ -42,13 +47,30 @@ let sendQueue = null;
 let quitting = false;
 let lastAiError = '';
 let updater = null;
-let online = null;
+let platform = null;
+let botStore = null;
 let images = null;
 
 // Fotos do cardápio aparecem no painel por figrano-img://<hash>.
-protocol.registerSchemesAsPrivileged([{ scheme: 'figrano-img', privileges: { standard: true, secure: true, supportFetchAPI: true } }]);
-// Servidor padrão da página de pedidos; dá para trocar em Ajustes.
-const DEFAULT_ONLINE_API = process.env.FIGRANO_ONLINE_API || 'https://figrano.vercel.app';
+protocol.registerSchemesAsPrivileged([
+  { scheme: 'figrano-img', privileges: { standard: true, secure: true, supportFetchAPI: true } },
+  // Painel embutido no instalador: app://panel/index.html (origem própria, liberada no CORS da API)
+  { scheme: 'app', privileges: { standard: true, secure: true, supportFetchAPI: true, corsEnabled: true } },
+]);
+
+/** Pasta do painel embutido: no instalador fica em resources/panel; no código, em Figrano/panel. */
+function panelDir() {
+  const packaged = path.join(process.resourcesPath || '', 'panel');
+  if (app.isPackaged && fs.existsSync(packaged)) return packaged;
+  const local = path.join(__dirname, '..', '..', 'panel');
+  return fs.existsSync(path.join(local, 'index.html')) ? local : null;
+}
+
+const MIME = {
+  '.html': 'text/html; charset=utf-8', '.js': 'text/javascript', '.css': 'text/css', '.png': 'image/png',
+  '.jpg': 'image/jpeg', '.webp': 'image/webp', '.svg': 'image/svg+xml', '.ico': 'image/x-icon', '.json': 'application/json',
+  '.woff2': 'font/woff2',
+};
 let updateReady = ''; // versão já baixada, esperando o app fechar
 const receiveQueue = new SerialQueue();
 
@@ -75,9 +97,35 @@ function encryptSecret(value) {
 
 const readApiKey = () => decryptSecret(store.settings.ai.apiKeyEncrypted);
 const writeApiKey = (key) => store.updateSettings('ai', { apiKeyEncrypted: encryptSecret(key) });
-const readOnlineToken = () => decryptSecret(store.settings.online.tokenEncrypted);
+const readPlatformToken = () => decryptSecret(store.settings.platform.tokenEncrypted);
+const writePlatformToken = (token) => store.updateSettings('platform', { tokenEncrypted: encryptSecret(token) });
+
+/**
+ * O robô continua falando com um "store", mas cardápio, regras da loja e pedidos vêm da
+ * API do Sabores. Conversas, pausas e chamados continuam locais (são do WhatsApp deste PC).
+ */
+function connectedStore(local, plat) {
+  return new Proxy(local, {
+    get(target, prop) {
+      if (prop === 'settings') return { ...target.settings, store: plat.storeSettings(target.settings.store) };
+      if (prop === 'numberedItems') return () => plat.numberedItems();
+      if (prop === 'createOrder') return (input) => plat.createOrder(input);
+      if (prop === 'lastOrderOf') return (chatId, phone) => plat.lastOrderOf(chatId, phone);
+      if (prop === 'orders') return plat.localOrders();
+      if (prop === 'menu') return { categories: plat.menu?.categories || [] };
+      const value = Reflect.get(target, prop, target);
+      return typeof value === 'function' ? value.bind(target) : value;
+    },
+  });
+}
 
 // ----------------------------------------------------------------- utilidades
+
+/** Som no painel: 'pedido' (chegou pedido) ou 'sil' (cliente chamou a Sil). Desliga em Ajustes → Robô. */
+function alertSound(kind) {
+  if (store?.settings.bot.soundAlerts === false) return;
+  win?.webContents.send('alert', kind);
+}
 
 function notify(title, body, target) {
   if (SMOKE || !Notification.isSupported()) return;
@@ -142,65 +190,231 @@ function onWhatsappMessage(msg) {
   if (!MESSAGE_TYPES.has(msg.type) || msg.isNew === false) return;
   if (msg.timestamp && Date.now() / 1000 - msg.timestamp > STALE_MESSAGE_SECONDS) return;
 
-  if (TEST_LOG) console.log(`[teste] recebida chat=${chatId} telefone=${msg.phone || '?'} tipo=${msg.type}`);
+  if (TEST_LOG) console.log(`[teste] recebida chat=${chatId} telefone=${msg.phone || '?'} tipo=${msg.type} texto=${JSON.stringify(msg.text || '')}`);
 
-  receiveQueue.push(async () => {
-    const out = await engine.handle({
-      chatId, phone: msg.phone, name: msg.name, type: msg.type, text: msg.text, location: msg.location,
-    });
-    if (TEST_LOG) console.log(`[teste] robô respondeu ${out.replies.length} mensagem(ns); efeitos=${out.effects.map((e) => e.type).join(',') || 'nenhum'}`);
-    for (const effect of out.effects) {
-      if (effect.type === 'order_created') {
-        notify(`Novo pedido #${effect.order.number}`, `${effect.order.customer.name} · ${money(effect.order.total)}`, 'orders');
-      } else if (effect.type === 'handoff') {
-        notify('Cliente pediu atendente', `${effect.handoff.name}: ${effect.handoff.motive}`.slice(0, 120), 'handoffs');
-      } else if (effect.type === 'ai_error') {
-        lastAiError = AiResponder.describeError({ message: effect.message });
-        console.error('[ia]', effect.message);
-        win?.webContents.send('state:changed', 'ai');
-      }
+  // Falou do comprovante mas mandou só texto (ex.: a mensagem pronta do site): pede a imagem
+  if (msg.type === 'chat' && platform && /comprovante|paguei|pix (feito|pago|enviado)|ja fiz o pix|fiz o pix/i.test(msg.text || '')
+    && !store.isPaused(chatId)) {
+    const pending = platform.pendingPixOrderFor(chatId, msg.phone);
+    if (pending) {
+      sendToChat(chatId, [
+        `Pode mandar aqui a foto ou o print do comprovante do Pix do pedido #${pending.number} (${money(pending.total)}) que a Sil confere e já libera.`,
+      ], { respectsPause: false }).catch(() => {});
+      return;
     }
-    // A resposta ao pedido de atendente precisa sair mesmo com a conversa recém-pausada.
-    const isHandoff = out.effects.some((effect) => effect.type === 'handoff');
-    if (out.replies.length) await sendToChat(chatId, out.replies, { respectsPause: !isHandoff });
-  }).catch((error) => console.error('[robô] falha ao processar mensagem:', error));
+  }
+
+  // Imagem de quem tem pedido Pix pendente = comprovante. Avisa a Sil; quem confere é ela.
+  if (msg.type === 'image' && platform) {
+    const pending = platform.pendingPixOrderFor(chatId, msg.phone);
+    if (pending) {
+      receiveQueue.push(async () => {
+        try {
+          await platform.reportPixProof(pending.id);
+          alertSound('sil'); // comprovante para conferir
+          notify(`Comprovante do Pix: pedido #${pending.number}`, `${pending.customer.name} · ${money(pending.total)}. Confira e libere no painel.`, 'orders');
+          await sendToChat(chatId, [
+            `Recebemos o comprovante do pedido #${pending.number}. A Sil vai conferir e já confirma por aqui.`,
+          ], { respectsPause: false });
+        } catch (error) {
+          console.error('[sabores] comprovante não registrado:', error?.message || error);
+        }
+      }).catch(() => {});
+      return;
+    }
+  }
+
+  // Mensagem de voz: transcreve no próprio PC (serviço local) e o robô trata como texto.
+  // Sem o serviço, segue como áudio e o robô pede para escrever.
+  if (msg.type === 'ptt' || msg.type === 'audio') {
+    receiveQueue.push(async () => {
+      let heard = null;
+      try {
+        const media = await whatsapp.call('audioBase64', msg.id);
+        const names = platform ? platform.numberedItems().map((i) => i.name) : [];
+        const hint = buildAudioHint({
+          streets: store.settings.bot.knownStreets,
+          addresses: store.recentAddresses(),
+          neighborhoods: (platform?.storeSettings(store.settings.store).neighborhoods || []).map((n) => n.name),
+          items: names,
+        });
+        if (TEST_LOG && media?.base64) saveTestAudio(msg.id, media.base64);
+        heard = await transcribeAudio({ base64: media?.base64, url: store.settings.platform.transcribeUrl, hint });
+        if (heard) heard.text = fixAudioText(heard.text, names);
+        if (TEST_LOG) console.log(`[teste] áudio transcrito em ${heard?.seconds ?? '-'}s: ${heard?.text ?? '(nada)'}`);
+      } catch (error) {
+        console.error('[áudio] não transcrito:', error?.message || error);
+      }
+      await respond(chatId, { ...msg, type: heard ? 'chat' : 'ptt', text: heard?.text || '', fromAudio: Boolean(heard) });
+    }).catch((error) => console.error('[robô] falha ao processar áudio:', error));
+    return;
+  }
+
+  receiveQueue.push(() => respond(chatId, msg)).catch((error) => console.error('[robô] falha ao processar mensagem:', error));
 }
 
-// ------------------------------------------------------------ pedido online
-
-/** Traz para o painel um pedido feito na página e avisa o cliente no WhatsApp. */
-async function importOnlineOrder(remote) {
-  // O código do link aponta a conversa certa; sem ele, procura pelo telefone digitado.
-  const chatId = online.chatIdForRef(remote.ref) || await chatIdFromPhone(remote.customer?.phone);
-  const order = store.createOrder({
-    customer: { chatId, name: remote.customer?.name, phone: remote.customer?.phone },
-    items: remote.items,
-    mode: remote.mode,
-    address: remote.address,
-    payment: remote.payment,
-    changeFor: remote.changeFor,
-    notes: remote.notes,
-    source: 'online',
-    onlineId: remote.id,
-  });
-  notify(`Novo pedido #${order.number} pelo site`, `${order.customer.name} · ${money(order.total)}`, 'orders');
-  if (chatId && store.settings.bot.status !== 'inactive') {
-    sendToChat(chatId, [
-      `Recebemos seu pedido #${order.number} feito pelo site, no total de ${money(order.total)}. Vamos avisando cada etapa por aqui.`,
-    ], { respectsPause: false });
+/** Modo de teste: guarda o áudio recebido para comparar modelos de transcrição com voz real. */
+function saveTestAudio(id, base64) {
+  try {
+    const dir = path.join(app.getPath('userData'), 'audios-teste');
+    fs.mkdirSync(dir, { recursive: true });
+    const file = path.join(dir, `${Date.now()}-${String(id).replace(/[^a-z0-9]/gi, '').slice(-12)}.ogg`);
+    fs.writeFileSync(file, Buffer.from(base64, 'base64'));
+    console.log(`[teste] áudio guardado em ${file}`);
+  } catch (error) {
+    console.error('[áudio] não guardei o teste:', error?.message || error);
   }
-  return order;
+}
+
+/** Passa a mensagem ao robô, trata os efeitos (avisos para a Sil) e envia as respostas. */
+async function respond(chatId, msg) {
+  const out = await engine.handle({
+    chatId, phone: msg.phone, name: msg.name, type: msg.type, text: msg.text, location: msg.location, fromAudio: msg.fromAudio,
+  });
+  if (TEST_LOG) console.log(`[teste] robô respondeu ${out.replies.length} mensagem(ns); efeitos=${out.effects.map((e) => e.type).join(',') || 'nenhum'}`);
+  if (TEST_LOG) out.replies.forEach((reply, i) => console.log(`[teste] resposta ${i + 1}: ${JSON.stringify(reply)}`));
+  for (const effect of out.effects) {
+    if (effect.type === 'order_created') {
+      alertSound('pedido');
+      if (effect.order.address) store.rememberAddress(effect.order.address);
+      notify(`Novo pedido #${effect.order.number}`, `${effect.order.customer.name} · ${money(effect.order.total)}`, 'orders');
+    } else if (effect.type === 'handoff') {
+      alertSound('sil');
+      notify('Cliente pediu atendente', `${effect.handoff.name}: ${effect.handoff.motive}`.slice(0, 120), 'handoffs');
+    } else if (effect.type === 'order_failed') {
+      console.error('[sabores] pedido do robô não gravou:', effect.message);
+      notify('Pedido do WhatsApp não foi gravado', `${effect.message}`.slice(0, 120), 'whatsapp');
+    } else if (effect.type === 'review') {
+      if (effect.rating <= 3) alertSound('sil');
+      notify(`Avaliação ${effect.rating}/5 do pedido #${effect.number}`, effect.comment || (effect.rating <= 3 ? 'Nota baixa: veja em Atender.' : 'Cliente avaliou o pedido.'), effect.rating <= 3 ? 'handoffs' : 'orders');
+    } else if (effect.type === 'question_for_sil') {
+      alertSound('sil');
+      // Fica na fila de "Atender" do painel (a notificação do Windows é só um extra:
+      // não aparece com o app em desenvolvimento e some se ninguém estiver olhando)
+      store.addHandoff({
+        chatId, name: msg.name || effect.name, phone: msg.phone,
+        motive: `Pergunta para você: "${effect.text}"`, priority: 'medium',
+      });
+      notify(`Pergunta para você: ${effect.name || 'cliente'}`, effect.text, 'handoffs');
+    } else if (effect.type === 'festa_lead') {
+      if (effect.first) alertSound('sil');
+      store.addHandoff({
+        chatId, name: msg.name || effect.name, phone: msg.phone,
+        motive: effect.first ? `Cliente de festa: "${effect.text}"` : `Festa (mais detalhes): "${effect.text}"`,
+        priority: 'medium',
+        area: 'buffet', // festa vai para o módulo Buffet, não mistura com o delivery
+      });
+      notify(
+        effect.first ? `Cliente de festa: ${effect.name || 'novo contato'}` : `Festa: ${effect.name || 'cliente'} mandou mais detalhes`,
+        effect.text,
+        'buffet',
+      );
+    } else if (effect.type === 'livia_error') {
+      console.error('[lívia]', effect.message);
+    } else if (effect.type === 'ai_error') {
+      lastAiError = AiResponder.describeError({ message: effect.message });
+      console.error('[ia]', effect.message);
+      win?.webContents.send('state:changed', 'ai');
+    }
+  }
+  // A resposta ao pedido de atendente precisa sair mesmo com a conversa recém-pausada.
+  const isHandoff = out.effects.some((effect) => effect.type === 'handoff');
+  if (out.replies.length) await sendToChat(chatId, out.replies, { respectsPause: !isHandoff });
+}
+
+// ------------------------------------------------------ pedidos (API do Sabores)
+
+/** Conversa do cliente: pelo código do link (site/robô) ou pelo telefone do pedido. */
+async function chatOf(order) {
+  return order.customer.chatId || await chatIdFromPhone(order.customer.phone);
+}
+
+/**
+ * Eventos da plataforma: pedido novo (site ou balcão) e mudança de status feita no painel.
+ * O cliente é avisado no WhatsApp; a Sil, por notificação do Windows.
+ */
+async function onPlatformEvent(event) {
+  const push = (topic) => { if (win && !win.isDestroyed()) win.webContents.send('state:changed', topic); };
+  if (event.type === 'orders' || event.type === 'menu' || event.type === 'session' || event.type === 'connection') {
+    push(event.type);
+    return;
+  }
+  const order = event.order;
+  if (!order) return;
+  const canMessage = store.settings.bot.status !== 'inactive';
+
+  if (event.type === 'order_new' && order.status === 'awaiting_pix') {
+    alertSound('pedido');
+    // Pix pelo site: sem comprovante, o pedido não vai para a cozinha
+    notify(`Pedido #${order.number} esperando o comprovante do Pix`, `${order.customer.name} · ${money(order.total)}`, 'orders');
+    if (canMessage) {
+      const chatId = await chatOf(order);
+      if (chatId) {
+        sendToChat(chatId, [
+          `Recebemos seu pedido #${order.number} pelo site (${money(order.total)}). Para confirmar, mande aqui o comprovante do Pix. Sem ele, o pedido não vai para a cozinha.`,
+        ], { respectsPause: false });
+      }
+    }
+    push('orders');
+    return;
+  }
+
+  if (event.type === 'order_new') {
+    alertSound('pedido');
+    const origin = order.source === 'online' ? 'pelo site' : order.source === 'manual' ? 'no balcão' : 'pelo WhatsApp';
+    notify(`Novo pedido #${order.number} ${origin}`, `${order.customer.name} · ${money(order.total)}`, 'orders');
+    if (order.source === 'online' && canMessage) {
+      const chatId = await chatOf(order);
+      if (chatId) {
+        sendToChat(chatId, [
+          `Recebemos seu pedido #${order.number} feito pelo site, no total de ${money(order.total)}. Vamos avisando cada etapa por aqui.`,
+        ], { respectsPause: false });
+      }
+    }
+    push('orders');
+    return;
+  }
+
+  if (event.type === 'order_status') {
+    const link = platform.trackingLinkFor(order);
+    const text = event.previous === 'AWAITING_PIX' && order.status === 'new'
+      ? `Comprovante conferido! Seu pedido #${order.number} está confirmado.${link ? `\n\nAcompanhe aqui: ${link}` : ''}`
+      : statusAviso(order, { storeName: platform.storeSettings(store.settings.store).name, link });
+    if (text && canMessage) {
+      const chatId = await chatOf(order);
+      // Avisos de pedido saem em "ativo" e "só avisos", mesmo com a conversa pausada.
+      if (chatId) {
+        const texts = [text];
+        // Avaliação (opcional): só depois da entrega
+        if (order.status === 'done' && store.settings.bot.askReview) {
+          texts.push(reviewRequest(order));
+          store.setPendingReview(chatId, { orderId: order.id, number: order.number });
+        }
+        sendToChat(chatId, texts, { respectsPause: false });
+      }
+    }
+    push('orders');
+  }
 }
 
 // ------------------------------------------------------------------------ API
 
 function publicState() {
-  const { ai: aiSettings, online: onlineSettings, ...settings } = store.settings;
+  const { ai: aiSettings, online: _legacyOnline, platform: platformSettings, ...settings } = store.settings;
   const wa = whatsapp ? whatsapp.snapshot() : { state: 'loading', detail: '', me: null, activeChat: null };
   if (wa.activeChat) {
     wa.activeChat = { ...wa.activeChat, pausedUntil: store.pauseUntil(wa.activeChat.chatId) };
   }
+  // Conversas em silêncio (pausadas): nome do chamado ou da conversa do robô
+  const pausedChats = store.activePauses().map(({ chatId, until }) => {
+    const handoff = store.handoffs.find((h) => h.chatId === chatId);
+    const session = engine?.sessions?.get(chatId);
+    const name = handoff?.name || session?.name || '';
+    const phone = handoff?.phone || session?.phone || (chatId.endsWith('@c.us') ? chatId.split('@')[0] : '');
+    return { chatId, name, phone, until };
+  });
   return {
+    pausedChats,
     version: app.getVersion(),
     settings: {
       ...settings,
@@ -212,17 +426,17 @@ function publicState() {
         ollamaModel: aiSettings.ollamaModel,
         lastError: lastAiError,
       },
-      online: {
-        enabled: onlineSettings.enabled,
-        apiUrl: onlineSettings.apiUrl || DEFAULT_ONLINE_API,
-        slug: onlineSettings.slug,
-        url: onlineSettings.url,
-        connected: Boolean(online?.active() && online.lastOkAt && !online.lastError),
-        lastError: online?.lastError || '',
+      platform: {
+        apiUrl: platformSettings.apiUrl,
+        siteUrl: platformSettings.siteUrl,
+        buffetUrl: platformSettings.buffetUrl,
       },
     },
-    menu: store.menu,
-    orders: store.orders,
+    platform: {
+      connected: Boolean(platform?.connected()),
+      user: platform?.user ? { name: platform.user.name, role: platform.user.role } : null,
+      lastError: platform?.lastError || '',
+    },
     handoffs: store.handoffs,
     whatsapp: wa,
   };
@@ -276,59 +490,29 @@ const api = {
     }
   },
 
-  'menu:saveCategory': (category) => store.saveCategory(category),
-  'menu:deleteCategory': (id) => store.deleteCategory(id),
-  'menu:saveItem': (categoryId, item) => store.saveItem(categoryId, item),
-  'menu:deleteItem': (categoryId, itemId) => store.deleteItem(categoryId, itemId),
-  'menu:setItemPhoto': (categoryId, itemId, dataUrl) => {
-    const hash = dataUrl ? images.save(dataUrl, 'item') : null;
-    return store.setItemPhoto(categoryId, itemId, hash);
-  },
-  'store:setImage': (kind, dataUrl) => {
-    if (kind !== 'logo' && kind !== 'cover') throw new Error('Tipo de imagem inválido.');
-    store.updateSettings('store', { [kind]: dataUrl ? images.save(dataUrl, kind) : '' });
-  },
-
-  'orders:create': async (input) => {
-    const chatId = input.customer?.chatId || await chatIdFromPhone(input.customer?.phone);
-    return store.createOrder({ ...input, customer: { ...input.customer, chatId }, source: 'manual' });
-  },
-  'orders:setStatus': async (id, status) => {
-    const order = store.setOrderStatus(id, status);
-    const text = statusNotification(order, store.settings.store.name);
-    // Avisos de pedido saem em "ativo" e "só avisos", mesmo com a conversa pausada.
-    if (text && order.customer.chatId && store.settings.bot.status !== 'inactive') {
-      sendToChat(order.customer.chatId, [text], { respectsPause: false });
-    }
-    online?.pushStatus(order);
-    return order;
-  },
-  'orders:print': (id) => printOrder(id),
-
-  'online:activate': async ({ apiUrl, slug }) => {
-    const cleanSlug = String(slug || '').trim().toLowerCase();
-    const data = await online.register(apiUrl || DEFAULT_ONLINE_API, cleanSlug);
-    store.updateSettings('online', {
-      enabled: true, slug: data.slug, url: data.url, tokenEncrypted: encryptSecret(data.token),
+  // Login: o mesmo do painel (o painel faz login e passa o token para o app)
+  'session:adopt': (token) => platform.adoptSession(String(token || '')),
+  'session:logout': () => platform.logout(),
+  'platform:configure': ({ apiUrl, siteUrl, buffetUrl }) => {
+    const clean = (value, label) => {
+      const url = String(value || '').trim().replace(/\/+$/, '');
+      if (!/^https?:\/\/[^\s]+$/.test(url)) throw new Error(`Endereço inválido: ${label}.`);
+      return url;
+    };
+    store.updateSettings('platform', {
+      apiUrl: clean(apiUrl, 'servidor'), siteUrl: clean(siteUrl, 'site de delivery'), buffetUrl: clean(buffetUrl, 'site do buffet'),
     });
-    online.start();
-    return data.url;
+    platform.start();
   },
-  'online:openPage': () => {
-    const { url } = store.settings.online;
-    if (/^https?:\/\//.test(url)) shell.openExternal(url);
-  },
-  'online:setEnabled': (enabled) => {
-    if (enabled && !readOnlineToken()) throw new Error('Ative o pedido online primeiro.');
-    store.updateSettings('online', { enabled: Boolean(enabled) });
-    if (enabled) online.start(); else online.stop();
-  },
+  // Comanda do pedido (o painel manda o pedido como veio da API)
+  'orders:print': (apiOrder) => printOrder(platform.toLocal(apiOrder)),
 
   'handoffs:open': async (id) => {
     const handoff = store.handoffs.find((h) => h.id === id);
     if (!handoff) throw new Error('Chamado não encontrado.');
     if (!whatsapp?.ready) throw new Error('O WhatsApp não está conectado.');
-    store.pauseChat(handoff.chatId, '24h');
+    // Buffet: o robô já ficou quieto por 24 h quando a festa chegou; atender não encurta isso
+    store.pauseChat(handoff.chatId, handoff.area === 'buffet' ? '24h' : '2h');
     await whatsapp.call('openChat', handoff.chatId);
     const greeting = store.settings.bot.handoffMessage.trim();
     if (greeting) sendToChat(handoff.chatId, [greeting], { respectsPause: false });
@@ -339,16 +523,30 @@ const api = {
   'wa:layout': (bounds) => whatsapp?.layout(bounds),
   'wa:reload': () => whatsapp?.reload(),
   'wa:pause': (chatId, duration) => store.pauseChat(chatId, duration),
-  'wa:resume': (chatId) => { store.resumeChat(chatId); store.resolveHandoffsOf(chatId); },
+  'wa:resume': (chatId) => { store.resumeChat(chatId); store.resolveHandoffsOf(chatId); engine?.forgetTopic(chatId); },
   'wa:sendMenu': async (chatId) => {
     if (!whatsapp?.ready) throw new Error('O WhatsApp não está conectado.');
-    const result = await sendToChat(chatId, [menuText(store.numberedItems())], { respectsPause: false });
-    if (result.failed) throw new Error(`Não foi possível enviar: ${result.error}`);
+    // Vários cliques seguidos não mandam o cardápio repetido para o cliente
+    const last = menuSentAt.get(chatId) || 0;
+    if (Date.now() - last < MENU_RESEND_MS) return 'duplicado';
+    menuSentAt.set(chatId, Date.now());
+    const link = platform.linkFor(chatId);
+    const text = link
+      ? `Veja o cardápio e faça seu pedido por aqui:\n${link}\n\nSe preferir, pode pedir por esta conversa mesmo.`
+      : menuText(botStore.numberedItems());
+    const result = await sendToChat(chatId, [text], { respectsPause: false });
+    if (result.failed) {
+      menuSentAt.delete(chatId); // falhou: pode tentar de novo na hora
+      throw new Error(`Não foi possível enviar: ${result.error}`);
+    }
+    return 'enviado';
   },
-  'wa:openChat': async (phoneOrChatId) => {
+  /** Abre a conversa. `{ pause: '24h' }` deixa o robô quieto nela (chamado de buffet do site). */
+  'wa:openChat': async (phoneOrChatId, options) => {
     if (!whatsapp?.ready) throw new Error('O WhatsApp não está conectado.');
     const chatId = String(phoneOrChatId).includes('@') ? phoneOrChatId : await chatIdFromPhone(phoneOrChatId);
     if (!chatId) throw new Error('Telefone inválido ou sem WhatsApp.');
+    if (options?.pause) store.pauseChat(chatId, options.pause);
     await whatsapp.call('openChat', chatId);
   },
   'wa:archiveOld': async () => {
@@ -371,7 +569,7 @@ function registerApi() {
 const escapeHtml = (text) => String(text ?? '').replace(/[&<>"']/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
 
 function receiptHtml(order) {
-  const s = store.settings.store;
+  const s = platform.storeSettings(store.settings.store);
   const lines = order.items.map((line) => `
     <tr><td>${line.qty}x ${escapeHtml(line.name)}${line.notes ? `<br><small>${escapeHtml(line.notes)}</small>` : ''}</td>
     <td class="r">${money(line.qty * line.price)}</td></tr>`).join('');
@@ -396,8 +594,7 @@ function receiptHtml(order) {
   ${order.notes ? `<hr><div>Obs.: ${escapeHtml(order.notes)}</div>` : ''}`;
 }
 
-function printOrder(id) {
-  const order = store.orders.find((o) => o.id === id);
+function printOrder(order) {
   if (!order) throw new Error('Pedido não encontrado.');
   const printer = new BrowserWindow({ show: false, webPreferences: { sandbox: true, javascript: false } });
   printer.loadURL(`data:text/html;charset=utf-8,${encodeURIComponent(receiptHtml(order))}`);
@@ -408,6 +605,25 @@ function printOrder(id) {
 
 // --------------------------------------------------------------------- janela
 
+/**
+ * O painel é o do Sabores da Sil (apps/desktop). Instalado, vem junto do app (pasta panel);
+ * em desenvolvimento, abre o servidor do Vite (FIGRANO_PANEL_URL ou Ajustes).
+ */
+function loadPanel() {
+  // Instalado (ou com o painel compilado em Figrano/panel): painel embutido
+  if (panelDir() && !process.env.FIGRANO_PANEL_URL) {
+    win.loadURL('app://panel/index.html');
+    return;
+  }
+  const url = process.env.FIGRANO_PANEL_URL || store.settings.platform.panelUrl;
+  win.loadURL(url).catch(() => {
+    const html = `<!doctype html><meta charset="utf-8"><body style="font:16px system-ui;background:#FFF8EC;color:#2B1608;padding:64px">
+      <h1 style="font-size:24px">O painel não abriu</h1>
+      <p>Não encontrei o painel em <b>${escapeHtml(url)}</b>. Em desenvolvimento, rode <code>pnpm --filter @sabores/desktop dev</code> e reabra o app.</p>`;
+    win.loadURL(`data:text/html;charset=utf-8,${encodeURIComponent(html)}`);
+  });
+}
+
 function createWindow() {
   win = new BrowserWindow({
     width: 1280,
@@ -415,11 +631,11 @@ function createWindow() {
     minWidth: 980,
     minHeight: 620,
     show: false,
-    title: 'Figrano',
+    title: 'Sabores da Sil',
     icon: nativeImage.createFromBuffer(iconPng(256)),
-    backgroundColor: '#F6F4F0',
+    backgroundColor: '#FFF8EC',
     titleBarStyle: 'hidden',
-    titleBarOverlay: { color: TOP_BAR_COLOR, symbolColor: '#1F1D1A', height: 40 },
+    titleBarOverlay: { color: TOP_BAR_COLOR, symbolColor: '#2B1608', height: TOP_BAR_HEIGHT },
     webPreferences: {
       preload: path.join(__dirname, '..', 'preload', 'shell.preload.js'),
       contextIsolation: true,
@@ -429,12 +645,16 @@ function createWindow() {
   });
 
   win.webContents.setWindowOpenHandler(({ url }) => {
+    // PDF da nota fiscal gerado pelo próprio painel: abre numa janela do app
+    if (url.startsWith('blob:')) {
+      return { action: 'allow', overrideBrowserWindowOptions: { autoHideMenuBar: true, title: 'Nota fiscal', webPreferences: { sandbox: true } } };
+    }
     if (url.startsWith('https://')) shell.openExternal(url);
     return { action: 'deny' };
   });
   win.webContents.on('will-navigate', (event) => event.preventDefault());
 
-  win.loadFile(path.join(__dirname, '..', 'renderer', 'index.html'));
+  loadPanel();
   win.once('ready-to-show', () => { if (!SMOKE) { win.maximize(); win.show(); } });
 
   // Fechar esconde na bandeja: o robô continua respondendo.
@@ -478,47 +698,16 @@ function startAutoUpdate() {
 
 const wait = (ms) => new Promise((resolve) => setTimeout(resolve, ms));
 
-/** Dados de exemplo usados só no teste de fumaça, em pasta temporária. */
-function seedDemoData() {
-  store.updateSettings('store', { name: 'Cantina Exemplo', address: 'Rua das Laranjeiras, 80', deliveryFee: 6 });
-  const pizzas = store.saveCategory({ name: 'Pizzas' });
-  const calabresa = store.saveItem(pizzas.id, { name: 'Calabresa', description: 'Calabresa, cebola e azeitona', price: 42 });
-  store.saveItem(pizzas.id, { name: 'Quatro queijos', price: 48, available: false });
-  const drinks = store.saveCategory({ name: 'Bebidas' });
-  const soda = store.saveItem(drinks.id, { name: 'Refrigerante 2 L', price: 12 });
-  const first = store.createOrder({
-    customer: { chatId: '5511988887777@c.us', name: 'Marina Lopes', phone: '5511988887777' },
-    items: [{ ...calabresa, qty: 2, notes: 'sem cebola' }, { ...soda, qty: 1 }],
-    mode: 'delivery', address: 'Av. Central, 1200, ap. 34', payment: 'Dinheiro', changeFor: 150,
-  });
-  const second = store.createOrder({
-    customer: { name: 'Balcão', phone: '' }, items: [{ ...calabresa, qty: 1 }], mode: 'pickup', payment: 'Pix', source: 'manual',
-  });
-  store.setOrderStatus(second.id, 'preparing');
-  store.addHandoff({ chatId: '5511977776666@c.us', name: 'Paulo Reis', motive: 'Pedido chegou sem a bebida', priority: 'high', mood: 'frustrated' });
-  return first;
-}
-
-/** Abre cada seção com dados de exemplo, salva uma captura de tela e confere erros de script. */
+/** Teste de fumaça: abre o painel, salva uma captura e confere se a página carregou. */
 async function smokeTest() {
   try {
-    seedDemoData();
     win.setSize(1280, 800);
     win.showInactive();
-    await wait(1200);
-    let ok = true;
-    for (const target of ['orders', 'menu', 'handoffs', 'settings']) {
-      win.webContents.send('navigate', target);
-      await wait(500);
-      const file = path.join(process.cwd(), `smoke-${target}.png`);
-      fs.writeFileSync(file, (await win.webContents.capturePage()).toPNG());
-    }
-    win.webContents.send('navigate', 'orders');
-    await wait(300);
-    const report = await win.webContents.executeJavaScript('window.__smoke()');
-    ok = Boolean(report && report.ok);
-    console.log(`SMOKE ${JSON.stringify(report)}`);
-    app.exit(ok ? 0 : 1);
+    await wait(2500);
+    fs.writeFileSync(path.join(process.cwd(), 'smoke-painel.png'), (await win.webContents.capturePage()).toPNG());
+    const title = await win.webContents.executeJavaScript('document.title');
+    console.log(`SMOKE painel="${title}"`);
+    app.exit(title ? 0 : 1);
   } catch (error) {
     console.error('SMOKE falhou:', error);
     app.exit(1);
@@ -580,27 +769,49 @@ if (!app.requestSingleInstanceLock()) {
 } else {
   app.on('second-instance', showWindow);
 
+  // Alertas sonoros do painel tocam sem esperar um clique (política de autoplay)
+  app.commandLine.appendSwitch('autoplay-policy', 'no-user-gesture-required');
   app.whenReady().then(() => {
     app.setAppUserModelId('br.figrano.app');
     Menu.setApplicationMenu(null);
 
     store = new Store(path.join(app.getPath('userData'), 'figrano-dados.json'));
     images = new ImageStore(path.join(app.getPath('userData'), 'fotos'), nativeImage);
+    protocol.handle('app', (request) => {
+      const dir = panelDir();
+      const { host, pathname } = new URL(request.url);
+      if (!dir || host !== 'panel') return new Response('', { status: 404 });
+      // Só arquivos dentro da pasta do painel
+      const file = path.normalize(path.join(dir, decodeURIComponent(pathname)));
+      if (!file.startsWith(dir) || !fs.existsSync(file) || fs.statSync(file).isDirectory()) return new Response('', { status: 404 });
+      return new Response(fs.readFileSync(file), { headers: { 'Content-Type': MIME[path.extname(file).toLowerCase()] || 'application/octet-stream' } });
+    });
     protocol.handle('figrano-img', (request) => {
       const bytes = images.read(new URL(request.url).hostname);
       return bytes
         ? new Response(bytes, { headers: { 'Content-Type': 'image/jpeg', 'Cache-Control': 'max-age=31536000, immutable' } })
         : new Response('', { status: 404 });
     });
-    ai = new AiResponder({ store, getApiKey: readApiKey });
-    online = new OnlineSync({
+    platform = new Platform({
       store,
-      getToken: readOnlineToken,
-      importOrder: importOnlineOrder,
-      getWhatsapp: () => whatsapp?.me?.phone || '',
-      readImage: (hash) => images.read(hash),
+      getToken: readPlatformToken,
+      saveToken: writePlatformToken,
+      onEvent: (event) => { onPlatformEvent(event).catch((error) => console.error('[sabores] aviso falhou:', error)); },
     });
-    engine = new BotEngine({ store, ai, onlineLink: (chatId) => online.linkFor(chatId) });
+    botStore = connectedStore(store, platform);
+    ai = new AiResponder({ store: botStore, getApiKey: readApiKey });
+    // WhatsApp só com o ROBÔ (decisão de 18/11/2026): sem IA no delivery e sem Lívia por aqui.
+    // A Lívia atende só no site do buffet; festa no WhatsApp recebe o link do orçamento e a Sil é avisada.
+    // Para religar no futuro: passe `ai` e `livia: (input) => platform.askLivia(input)` de novo.
+    engine = new BotEngine({
+      store: botStore,
+      ai: null,
+      livia: null,
+      buffetLink: () => platform.buffetQuoteLink(),
+      onlineLink: (chatId) => platform.linkFor(chatId),
+      trackingLink: (order) => platform.trackingLinkFor(order),
+      onReview: (orderId, rating, comment) => platform.submitReview(orderId, rating, comment),
+    });
 
     registerApi();
     createWindow();
@@ -616,13 +827,10 @@ if (!app.requestSingleInstanceLock()) {
 
     const push = (topic) => { if (win && !win.isDestroyed()) win.webContents.send('state:changed', topic); };
     store.onChange(push);
-    // Cardápio e dados da loja vão para a página sempre que mudam.
-    store.onChange((topic) => { if (topic === 'menu' || topic === 'settings') online.scheduleSync(); });
     whatsapp.on('state', (state) => {
       push('whatsapp');
       if (TEST_LOG) console.log(`[teste] whatsapp=${state} ${whatsapp.detail || ''}`);
       if (state === 'ready' && SEND_TEST) runSendTest(SEND_TEST);
-      if (state === 'ready') online.scheduleSync(); // envia o número do WhatsApp da loja
       if (state === 'ready' && store.settings.bot.autoArchive) {
         whatsapp.call('archiveOld', Number(store.settings.bot.archiveDays) || 60).catch(() => {});
       }
@@ -638,10 +846,10 @@ if (!app.requestSingleInstanceLock()) {
       whatsapp.create();
       createTray();
       startAutoUpdate();
-      online.start();
+      platform.restore();
     }
   });
 
-  app.on('before-quit', () => { quitting = true; online?.stop(); store?.flush(); });
+  app.on('before-quit', () => { quitting = true; platform?.stop(); store?.flush(); });
   app.on('window-all-closed', () => { if (SMOKE) app.quit(); });
 }

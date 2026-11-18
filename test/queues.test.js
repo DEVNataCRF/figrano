@@ -81,9 +81,9 @@ test('SendQueue conta falha de envio e segue para a próxima', async () => {
 
 test('delayFor cresce com o tamanho do texto e tem teto', () => {
   const queue = new SendQueue({ transport: fakeTransport([]), random: () => 0 });
-  assert.equal(queue.delayFor(''), 1200);
-  assert.equal(queue.delayFor('x'.repeat(40)), 2200);
-  assert.equal(queue.delayFor('x'.repeat(5000)), 7000);
+  assert.equal(queue.delayFor(''), 600);
+  assert.equal(queue.delayFor('x'.repeat(40)), 920);
+  assert.equal(queue.delayFor('x'.repeat(5000)), 2500);
 });
 
 test('SendQueue envia mesmo se o "digitando" falhar', async () => {
@@ -98,4 +98,21 @@ test('SendQueue envia mesmo se o "digitando" falhar', async () => {
   const result = await queue.enqueue('1@c.us', ['oi']);
   assert.deepEqual(result, { sent: 1, skipped: 0, failed: 0 });
   assert.deepEqual(sent, ['oi']);
+});
+
+test('o "digitando" não segura o envio (antes somava o tempo duas vezes)', async () => {
+  const sleeps = [];
+  const sent = [];
+  const queue = new SendQueue({
+    transport: {
+      typing: () => new Promise(() => {}), // como o WhatsApp: só "volta" depois do tempo pedido
+      send: async (chatId, text) => { sent.push(text); },
+    },
+    sleep: async (ms) => { sleeps.push(ms); },
+    random: () => 0,
+  });
+  await queue.enqueue('a@c.us', ['oi', 'tudo bem?']);
+  assert.deepEqual(sent, ['oi', 'tudo bem?']);
+  const total = sleeps.reduce((a, b) => a + b, 0);
+  assert.ok(total < 3000, `esperou ${total} ms`);
 });

@@ -39,10 +39,13 @@ class SendQueue {
     this.lastSentAt = new Map();
   }
 
-  /** Tempo de "digitação" antes de enviar um texto, em ms. */
+  /**
+   * Tempo de "digitação" antes de enviar um texto, em ms: curto o bastante para o cliente
+   * não esperar (o cardápio inteiro sai em ~2,5 s), mas não instantâneo como um robô.
+   */
   delayFor(text) {
-    const base = 1200 + this.random() * 2000;
-    return Math.round(Math.min(base + String(text).length * 25, 7000));
+    const base = 600 + this.random() * 600;
+    return Math.round(Math.min(base + String(text).length * 8, 2500));
   }
 
   /**
@@ -65,15 +68,16 @@ class SendQueue {
         if (respectsPause && this.isPaused(chatId)) { result.skipped += 1; continue; }
         const delay = this.delayFor(text);
         try {
-          // "Digitando" é só cosmético: se falhar, a mensagem sai mesmo assim.
-          await Promise.resolve(this.transport.typing(chatId, delay)).catch(() => {});
+          // "Digitando" é só cosmético e NÃO é esperado: o WhatsApp segura a chamada pelo tempo
+          // pedido, e esperar por ela somava o tempo duas vezes (era a demora de ~30 s).
+          Promise.resolve().then(() => this.transport.typing(chatId, delay)).catch(() => {});
           await this.sleep(delay);
           if (respectsPause && this.isPaused(chatId)) { result.skipped += 1; continue; }
           this.lastSentAt.set(chatId, Date.now());
           await this.transport.send(chatId, text);
           this.lastSentAt.set(chatId, Date.now());
           result.sent += 1;
-          await this.sleep(700);
+          await this.sleep(300);
         } catch (error) {
           result.failed += 1;
           result.error = error?.message || String(error);

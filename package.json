@@ -10,12 +10,13 @@
     "probe": "electron . --probe",
     "test": "node --test",
     "icon": "node scripts/make-icon.js",
-    "dist": "npm run icon && electron-builder --win --publish never",
-    "release": "npm test && npm run icon && electron-builder --win --publish always"
+    "dist": "npm run icon && npm run panel && electron-builder --win --publish never",
+    "release": "npm test && npm run icon && npm run panel && electron-builder --win --publish always",
+    "panel": "node scripts/build-panel.js"
   },
   "dependencies": {
     "@anthropic-ai/sdk": "^1.9.0",
-    "@wppconnect/wa-js": "^4.8.0",
+    "@wppconnect/wa-js": "4.8.2",
     "electron-updater": "^6.8.11"
   },
   "devDependencies": {
@@ -25,7 +26,7 @@
   "author": "Figrano",
   "build": {
     "appId": "br.figrano.app",
-    "productName": "Figrano",
+    "productName": "Sabores da Sil",
     "directories": {
       "output": "dist",
       "buildResources": "build"
@@ -49,14 +50,20 @@
       "oneClick": true,
       "perMachine": false,
       "createDesktopShortcut": true,
-      "shortcutName": "Figrano",
-      "artifactName": "Figrano-Setup-${version}.${ext}"
+      "shortcutName": "Sabores da Sil",
+      "artifactName": "SaboresDaSil-Setup-${version}.${ext}"
     },
     "publish": [
       {
         "provider": "github",
         "owner": "DEVNataCRF",
         "repo": "figrano-releases"
+      }
+    ],
+    "extraResources": [
+      {
+        "from": "panel",
+        "to": "panel"
       }
     ]
   }

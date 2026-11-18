@@ -18,7 +18,7 @@ function defaultHours() {
 
 function defaultData() {
   return {
-    version: 1,
+    version: 2,
     settings: {
       store: {
         name: 'Minha loja',
@@ -40,6 +40,12 @@ function defaultData() {
         autoPauseOnManualReply: true,
         autoArchive: false,
         archiveDays: 60,
+        // Depois da entrega, o robô pede uma nota de 1 a 5 (opcional)
+        askReview: true,
+        // Som no painel: pedido novo e cliente chamando a Sil
+        soundAlerts: true,
+        // Ruas e lugares da cidade: dica para a transcrição de áudio acertar os nomes
+        knownStreets: 'Avenida Francisco Lacerda de Aguiar\nRua do Teatro',
       },
       ai: {
         enabled: false,
@@ -47,7 +53,8 @@ function defaultData() {
         apiKeyEncrypted: '',
         ollamaUrl: 'http://127.0.0.1:11434',
         ollamaModel: 'qwen3.5:9b',
-        ollamaThink: true, // o modelo pensa antes de responder: mais lento, mas usa as ferramentas direito
+        // QA 18/11/2026 (qwen 9B): com o raciocínio ligado ficou 3x mais lento e errou mais; padrão desligado
+        ollamaThink: false,
       },
       app: { autoStart: false },
       online: {
@@ -57,6 +64,15 @@ function defaultData() {
         url: '', // endereço público da página da loja
         tokenEncrypted: '',
       },
+      // Plataforma Sabores da Sil: API única (festa + delivery), painel e sites
+      platform: {
+        apiUrl: 'http://127.0.0.1:3333/api/v1',
+        siteUrl: 'http://localhost:3100', // site de delivery (link que o robô manda)
+        buffetUrl: 'http://localhost:5173', // site do buffet (orçamento de festa)
+        panelUrl: 'http://localhost:5174', // painel (só em desenvolvimento; instalado, vem junto)
+        transcribeUrl: 'http://127.0.0.1:8178', // transcrição de áudio no próprio PC (services/transcricao)
+        tokenEncrypted: '',
+      },
     },
     menu: { categories: [] },
     orders: [],
@@ -64,6 +80,10 @@ function defaultData() {
     handoffs: [],
     pauses: {},
     links: {}, // código do link da página -> conversa do WhatsApp
+    reviews: {}, // conversa -> pedido esperando a nota do cliente
+    orderStatus: {}, // pedido -> último status já avisado ao cliente (sobrevive a reiniciar o app)
+    sessions: {}, // conversa em andamento (carrinho, etapa, endereço): sobrevive a reiniciar o app
+    recentAddresses: [], // endereços de pedidos confirmados (dica para entender áudio)
   };
 }
 
@@ -92,6 +112,11 @@ class Store {
       try {
         const loaded = JSON.parse(fs.readFileSync(filePath, 'utf8'));
         this.data = mergeDefaults(loaded, defaultData());
+        // Migração 2: desliga o raciocínio do modelo (mais lento e menos preciso nos testes)
+        if ((this.data.version ?? 1) < 2) {
+          this.data.settings.ai.ollamaThink = false;
+          this.data.version = 2;
+        }
       } catch (error) {
         // Arquivo corrompido: guarda uma cópia e segue com dados novos.
         fs.copyFileSync(filePath, `${filePath}.corrompido-${Date.now()}`);
@@ -277,13 +302,14 @@ class Store {
 
   get handoffs() { return this.data.handoffs; }
 
-  addHandoff({ chatId, name, phone = '', motive = '', priority = 'medium', mood = 'calm' }) {
+  addHandoff({ chatId, name, phone = '', motive = '', priority = 'medium', mood = 'calm', area = 'delivery' }) {
     // Sem telefone informado, só IDs "@c.us" servem: "@lid" não é telefone.
     const digits = String(phone || (String(chatId).endsWith('@c.us') ? String(chatId).split('@')[0] : '')).replace(/\D/g, '');
     const existing = this.data.handoffs.find((h) => h.chatId === chatId);
     if (existing) {
       Object.assign(existing, {
         motive: motive || existing.motive, priority, mood, phone: digits || existing.phone, updatedAt: Date.now(),
+        area: area === 'buffet' ? 'buffet' : existing.area || 'delivery',
       });
       this.changed('handoffs');
       return existing;
@@ -296,6 +322,8 @@ class Store {
       motive: String(motive),
       priority: ['high', 'medium', 'low'].includes(priority) ? priority : 'medium',
       mood: ['calm', 'frustrated', 'hostile'].includes(mood) ? mood : 'calm',
+      // 'buffet' = festa/orçamento (tela do Buffet); 'delivery' = Atender do delivery
+      area: area === 'buffet' ? 'buffet' : 'delivery',
       createdAt: Date.now(),
       updatedAt: Date.now(),
     };
@@ -315,6 +343,74 @@ class Store {
     if (this.data.handoffs.length !== before) this.changed('handoffs');
   }
 
+  // ------------------------------------------------ endereços (dica do áudio)
+
+  /** Guarda o endereço de um pedido confirmado (os 60 mais recentes, sem repetir). */
+  rememberAddress(address) {
+    const clean = String(address || '').trim();
+    if (clean.length < 8) return;
+    const list = (this.data.recentAddresses || []).filter((a) => a.toLowerCase() !== clean.toLowerCase());
+    list.unshift(clean);
+    this.data.recentAddresses = list.slice(0, 60);
+    this.changed('recentAddresses');
+  }
+
+  recentAddresses() {
+    return [...(this.data.recentAddresses || [])];
+  }
+
+  // -------------------------------------------------------- conversas do robô
+
+  loadSessions() {
+    return { ...(this.data.sessions || {}) };
+  }
+
+  saveSessions(map) {
+    this.data.sessions = map;
+    this.changed('sessions');
+  }
+
+  // ------------------------------------------------------------ status avisado
+
+  /** Último status de cada pedido que o app já viu (gravado em disco). */
+  knownOrderStatuses() {
+    return { ...(this.data.orderStatus || {}) };
+  }
+
+  /** Grava os status atuais; guarda só os pedidos que ainda aparecem na lista da API. */
+  rememberOrderStatuses(map) {
+    const before = JSON.stringify(this.data.orderStatus || {});
+    const next = JSON.stringify(map);
+    if (before === next) return;
+    this.data.orderStatus = map;
+    this.changed('orderStatus');
+  }
+
+  // ----------------------------------------------------------------- reviews
+
+  /** O robô pediu a nota deste pedido nesta conversa (vale por 48 h). */
+  setPendingReview(chatId, { orderId, number }) {
+    this.data.reviews[chatId] = { orderId, number, at: Date.now() };
+    this.changed('reviews');
+  }
+
+  pendingReview(chatId, now = Date.now()) {
+    const pending = this.data.reviews?.[chatId];
+    if (!pending) return null;
+    if (now - pending.at > 48 * 60 * 60e3) {
+      delete this.data.reviews[chatId];
+      this.changed('reviews');
+      return null;
+    }
+    return pending;
+  }
+
+  clearPendingReview(chatId) {
+    if (!this.data.reviews?.[chatId]) return;
+    delete this.data.reviews[chatId];
+    this.changed('reviews');
+  }
+
   // ------------------------------------------------------------------ pauses
 
   /**
@@ -322,7 +418,7 @@ class Store {
    * @param {'15m'|'1h'|'24h'|'indefinite'} duration
    */
   pauseChat(chatId, duration, now = Date.now()) {
-    const spans = { '15m': 15 * 60e3, '1h': 60 * 60e3, '24h': 24 * 60 * 60e3 };
+    const spans = { '15m': 15 * 60e3, '1h': 60 * 60e3, '2h': 2 * 60 * 60e3, '24h': 24 * 60 * 60e3 };
     const until = duration === 'indefinite' ? FAR_FUTURE : now + (spans[duration] ?? spans['24h']);
     this.data.pauses[chatId] = until;
     this.changed('pauses');
@@ -334,6 +430,13 @@ class Store {
     delete this.data.pauses[chatId];
     this.changed('pauses');
     return true;
+  }
+
+  /** Conversas com o robô pausado agora: [{ chatId, until }] */
+  activePauses(now = Date.now()) {
+    return Object.entries(this.data.pauses || {})
+      .filter(([, until]) => until > now)
+      .map(([chatId, until]) => ({ chatId, until }));
   }
 
   /** Expiração da pausa, ou null se a conversa não está pausada. */

@@ -10,11 +10,12 @@ export function whatsappLink(phone, text = '') {
   return `https://wa.me/${full}${text ? `?text=${encodeURIComponent(text)}` : ''}`;
 }
 
+/** Etapas do pedido, na ordem (status da API). */
 export const STATUS_STEPS = [
-  { status: 'pending', label: 'Enviado para a loja' },
-  { status: 'new', label: 'Recebido pela loja' },
-  { status: 'preparing', label: 'Em preparo' },
-  { status: 'out', label: 'Saiu para entrega' },
-  { status: 'ready', label: 'Pronto para retirar' },
-  { status: 'done', label: 'Concluído' },
+  { status: 'AWAITING_PIX', label: 'Pix e comprovante' },
+  { status: 'NEW', label: 'Recebido pela loja' },
+  { status: 'PREPARING', label: 'Em preparo' },
+  { status: 'OUT_FOR_DELIVERY', label: 'Saiu para entrega' },
+  { status: 'READY_FOR_PICKUP', label: 'Pronto para retirar' },
+  { status: 'DONE', label: 'Concluído' },
 ];

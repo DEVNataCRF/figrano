@@ -4,8 +4,8 @@ const test = require('node:test');
 const assert = require('node:assert/strict');
 
 const { Store } = require('../src/main/store');
-const { BotEngine } = require('../src/main/bot/engine');
-const { AiResponder, systemPrompt } = require('../src/main/bot/ai');
+const { BotEngine } = require('../src/main/robo/engine');
+const { AiResponder, systemPrompt } = require('../src/main/ia/ai');
 
 // Quarta-feira, 20:00: loja aberta no horário padrão.
 const OPEN_TIME = new Date(2026, 10, 18, 20, 0);
@@ -44,7 +44,7 @@ test('Ollama: executa ferramentas e devolve o texto final', async () => {
     { role: 'assistant', content: '', tool_calls: [{ function: { name: 'add_items', arguments: { items: [{ number: 1, quantity: 2, notes: 'sem cebola' }] } } }] },
     { role: 'assistant', content: '<think>ok</think>Anotei 2 calabresas sem cebola! Algo mais?' },
   ]);
-  const out = await engine.handle({ chatId: '1@lid', phone: '5511999990000', type: 'chat', text: 'quero duas calabresas sem cebola por favor' });
+  const out = await engine.handle({ chatId: '1@lid', phone: '5511999990000', type: 'chat', text: 'me vê aquela de calabresa igual da outra vez, sem cebola' });
 
   assert.deepEqual(out.replies, ['Anotei 2 calabresas sem cebola! Algo mais?']);
   const session = engine.sessions.get('1@lid');
@@ -53,7 +53,7 @@ test('Ollama: executa ferramentas e devolve o texto final', async () => {
 
   assert.equal(requests[0].url, 'http://127.0.0.1:11434/api/chat');
   assert.equal(requests[0].body.model, 'qwen3.5:9b');
-  assert.equal(requests[0].body.think, true);
+  assert.equal(requests[0].body.think, false); // padrão desligado (QA 18/11: mais rápido e preciso)
   assert.equal(requests[0].body.messages[0].role, 'system');
   const toolMessage = requests[1].body.messages.at(-1);
   assert.equal(toolMessage.role, 'tool');
@@ -66,7 +66,7 @@ test('Ollama fora do ar: as regras assumem e o erro é registrado', async () => 
   const fetch = async () => { throw new TypeError('fetch failed'); };
   const ai = new AiResponder({ store, getApiKey: () => '', fetch });
   const engine = new BotEngine({ store, ai, now: () => OPEN_TIME });
-  const out = await engine.handle({ chatId: '1@lid', type: 'chat', text: 'vocês fazem entrega no centro hoje' });
+  const out = await engine.handle({ chatId: '1@lid', type: 'chat', text: 'queria saber se dá pra trocar o recheio pra frango' });
   assert.ok(out.replies.length > 0);
   const error = out.effects.find((e) => e.type === 'ai_error');
   assert.match(error.message, /Ollama não está rodando/);
@@ -77,7 +77,7 @@ test('Ollama: a saudação vem antes do cardápio', async () => {
     { role: 'assistant', content: '', tool_calls: [{ function: { name: 'send_menu', arguments: {} } }] },
     { role: 'assistant', content: 'Boa noite! Segue nosso cardápio:' },
   ]);
-  const out = await engine.handle({ chatId: '1@lid', type: 'chat', text: 'boa noite, o que vocês têm hoje' });
+  const out = await engine.handle({ chatId: '1@lid', type: 'chat', text: 'boa noite, estou com fome hoje' });
   assert.equal(out.replies.length, 2);
   assert.equal(out.replies[0], 'Boa noite! Segue nosso cardápio:');
   assert.match(out.replies[1], /Calabresa/);

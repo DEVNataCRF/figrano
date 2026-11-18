@@ -1,0 +1,2129 @@
+{
+ "cidade": "Guaçuí",
+ "uf": "ES",
+ "cep": "29560-000",
+ "cepUnico": true,
+ "fonte": "OpenStreetMap (© colaboradores do OpenStreetMap, licença ODbL)",
+ "geradoEm": "2026-11-18",
+ "bairros": [
+  "Antônio Francisco Moreira",
+  "Bairro da Matriz",
+  "Bairro da Palha",
+  "Bairro do Norte",
+  "Balança",
+  "Bela Vista",
+  "Centro",
+  "Cid Moreira",
+  "Edith Castro",
+  "Gumercindo da Silva Glória",
+  "Jorema",
+  "João Ferraz de Araújo",
+  "Manoel Alves Siqueira",
+  "Morada das Palmeiras",
+  "Nova Guaçui",
+  "Parque Industrial",
+  "Quincas Machado",
+  "Sagrado Coração de Jesus",
+  "Santa Cecília",
+  "Santa Cruz",
+  "São José",
+  "São Miguel",
+  "Tancredo Neves",
+  "Vale do Sol",
+  "Vila Nova",
+  "Vila dos Professores",
+  "Vista Alegre"
+ ],
+ "ruas": [
+  {
+   "nome": "Alameda Francisco Pinto",
+   "bairro": "Centro",
+   "bairros": [
+    "Centro"
+   ]
+  },
+  {
+   "nome": "Avenida Aedano Leite Martins",
+   "bairro": "Gumercindo da Silva Glória",
+   "bairros": [
+    "Gumercindo da Silva Glória",
+    "São Miguel"
+   ]
+  },
+  {
+   "nome": "Avenida Agenor Luis Thomé",
+   "bairro": null,
+   "bairros": [
+    "Quincas Machado",
+    "Bairro da Palha",
+    "Bairro da Matriz"
+   ]
+  },
+  {
+   "nome": "Avenida Espírito Santo",
+   "bairro": null,
+   "bairros": [
+    "Centro",
+    "Bairro da Matriz"
+   ]
+  },
+  {
+   "nome": "Avenida Governador Francisco Lacerda de Aguiar",
+   "bairro": "Bairro da Matriz",
+   "bairros": [
+    "Bairro da Matriz"
+   ]
+  },
+  {
+   "nome": "Avenida Governador Lacerda de Aguiar",
+   "bairro": null,
+   "bairros": [
+    "Bairro da Matriz",
+    "Centro"
+   ]
+  },
+  {
+   "nome": "Avenida Governador Lacerda de Águiar",
+   "bairro": "Bairro da Matriz",
+   "bairros": [
+    "Bairro da Matriz"
+   ]
+  },
+  {
+   "nome": "Avenida Joana Ventina da Silva",
+   "bairro": "Gumercindo da Silva Glória",
+   "bairros": [
+    "Gumercindo da Silva Glória"
+   ]
+  },
+  {
+   "nome": "Avenida Joaquim Machado de Faria",
+   "bairro": null,
+   "bairros": [
+    "Quincas Machado",
+    "Centro"
+   ]
+  },
+  {
+   "nome": "Avenida José Alexandre",
+   "bairro": null,
+   "bairros": [
+    "São José",
+    "Sagrado Coração de Jesus",
+    "João Ferraz de Araújo",
+    "Parque Industrial"
+   ]
+  },
+  {
+   "nome": "Avenida José Ferreira Alves",
+   "bairro": null,
+   "bairros": [
+    "Balança",
+    "Nova Guaçui",
+    "João Ferraz de Araújo",
+    "São José"
+   ]
+  },
+  {
+   "nome": "Avenida José Moraes Moulin",
+   "bairro": "Tancredo Neves",
+   "bairros": [
+    "Tancredo Neves"
+   ]
+  },
+  {
+   "nome": "Avenida Liparizi",
+   "bairro": "Santa Cecília",
+   "bairros": [
+    "Santa Cecília",
+    "João Ferraz de Araújo"
+   ]
+  },
+  {
+   "nome": "Avenida Marechal Floriano",
+   "bairro": null,
+   "bairros": [
+    "Centro",
+    "Sagrado Coração de Jesus"
+   ]
+  },
+  {
+   "nome": "Avenida Senador Atilio Vivacqua",
+   "bairro": "Centro",
+   "bairros": [
+    "Centro"
+   ]
+  },
+  {
+   "nome": "Avenida São Miguel Arcanjo",
+   "bairro": "Vale do Sol",
+   "bairros": [
+    "Vale do Sol"
+   ]
+  },
+  {
+   "nome": "Avenida Sérgio Ricardo Januário Couzi",
+   "bairro": "Edith Castro",
+   "bairros": [
+    "Edith Castro"
+   ]
+  },
+  {
+   "nome": "Avenida Vera Lúcia Souza Lima Mendonça",
+   "bairro": null,
+   "bairros": [
+    "Vale do Sol",
+    "Bairro da Palha",
+    "Santa Cruz",
+    "Cid Moreira"
+   ]
+  },
+  {
+   "nome": "Avenida Virgilio Aguiar",
+   "bairro": "Morada das Palmeiras",
+   "bairros": [
+    "Morada das Palmeiras",
+    "Vila Nova"
+   ]
+  },
+  {
+   "nome": "Beco Antonio Santos Moreira",
+   "bairro": "Sagrado Coração de Jesus",
+   "bairros": [
+    "Sagrado Coração de Jesus"
+   ]
+  },
+  {
+   "nome": "Beco do Bagaço",
+   "bairro": "Bairro do Norte",
+   "bairros": [
+    "Bairro do Norte"
+   ]
+  },
+  {
+   "nome": "Estrada Rural 3",
+   "bairro": "Morada das Palmeiras",
+   "bairros": [
+    "Morada das Palmeiras"
+   ]
+  },
+  {
+   "nome": "Estrada do Cristo",
+   "bairro": null,
+   "bairros": [
+    "Centro",
+    "São José",
+    "Sagrado Coração de Jesus",
+    "Parque Industrial"
+   ]
+  },
+  {
+   "nome": "Estrada do Raulino",
+   "bairro": "Vila dos Professores",
+   "bairros": [
+    "Vila dos Professores"
+   ]
+  },
+  {
+   "nome": "Ladeira Cirilo Quaresma",
+   "bairro": "Centro",
+   "bairros": [
+    "Centro"
+   ]
+  },
+  {
+   "nome": "Praça Efrain Ferreira de Carvalho",
+   "bairro": "Tancredo Neves",
+   "bairros": [
+    "Tancredo Neves"
+   ]
+  },
+  {
+   "nome": "Praça João Acacinho",
+   "bairro": null,
+   "bairros": [
+    "Centro",
+    "Bairro da Matriz"
+   ]
+  },
+  {
+   "nome": "Praça Vicente Camuzi",
+   "bairro": null,
+   "bairros": [
+    "Bairro da Matriz",
+    "Vista Alegre"
+   ]
+  },
+  {
+   "nome": "Praça Vinte e Cinco de Dezembro",
+   "bairro": "Centro",
+   "bairros": [
+    "Centro"
+   ]
+  },
+  {
+   "nome": "Praça da Matriz",
+   "bairro": "Bairro da Matriz",
+   "bairros": [
+    "Bairro da Matriz"
+   ]
+  },
+  {
+   "nome": "Rodovia ES - 482",
+   "bairro": "João Ferraz de Araújo",
+   "bairros": [
+    "João Ferraz de Araújo"
+   ]
+  },
+  {
+   "nome": "Rodovia Estadual Governador Eurico Vieira de Rezende",
+   "bairro": "São Miguel",
+   "bairros": [
+    "São Miguel"
+   ]
+  },
+  {
+   "nome": "Rodovia Governador Eurico Vieira de Rezende",
+   "bairro": null,
+   "bairros": [
+    "São Miguel",
+    "Tancredo Neves"
+   ]
+  },
+  {
+   "nome": "Rodovia Prefeito Norival Couzi",
+   "bairro": "Morada das Palmeiras",
+   "bairros": [
+    "Morada das Palmeiras"
+   ]
+  },
+  {
+   "nome": "Rodovia Zinho de Paula - Sebastião Lamas de Paula",
+   "bairro": "Vale do Sol",
+   "bairros": [
+    "Vale do Sol",
+    "Quincas Machado",
+    "Bairro da Palha"
+   ]
+  },
+  {
+   "nome": "Rua 15 de Novembro",
+   "bairro": "Vila dos Professores",
+   "bairros": [
+    "Vila dos Professores"
+   ]
+  },
+  {
+   "nome": "Rua A",
+   "bairro": "Edith Castro",
+   "bairros": [
+    "Edith Castro"
+   ]
+  },
+  {
+   "nome": "Rua Abel Barbosa Lima",
+   "bairro": "Bairro da Palha",
+   "bairros": [
+    "Bairro da Palha"
+   ]
+  },
+  {
+   "nome": "Rua Acir Lemos de Oliveira",
+   "bairro": "Morada das Palmeiras",
+   "bairros": [
+    "Morada das Palmeiras"
+   ]
+  },
+  {
+   "nome": "Rua Acácio Francisco Mendes",
+   "bairro": "Santa Cecília",
+   "bairros": [
+    "Santa Cecília"
+   ]
+  },
+  {
+   "nome": "Rua Adelino Hemenegildo Costa",
+   "bairro": "Gumercindo da Silva Glória",
+   "bairros": [
+    "Gumercindo da Silva Glória"
+   ]
+  },
+  {
+   "nome": "Rua Adhemar Alves Rosa",
+   "bairro": "São José",
+   "bairros": [
+    "São José",
+    "Parque Industrial"
+   ]
+  },
+  {
+   "nome": "Rua Adilon Vargas",
+   "bairro": "Centro",
+   "bairros": [
+    "Centro"
+   ]
+  },
+  {
+   "nome": "Rua Agenor Marcelino de Souza",
+   "bairro": "Edith Castro",
+   "bairros": [
+    "Edith Castro"
+   ]
+  },
+  {
+   "nome": "Rua Agostinho Francisco",
+   "bairro": "Antônio Francisco Moreira",
+   "bairros": [
+    "Antônio Francisco Moreira"
+   ]
+  },
+  {
+   "nome": "Rua Albano Rocha de Oliveira",
+   "bairro": null,
+   "bairros": [
+    "Vila Nova",
+    "Morada das Palmeiras"
+   ]
+  },
+  {
+   "nome": "Rua Alberto Bazani",
+   "bairro": "João Ferraz de Araújo",
+   "bairros": [
+    "João Ferraz de Araújo"
+   ]
+  },
+  {
+   "nome": "Rua Albinel de S. Barbosa",
+   "bairro": "Vista Alegre",
+   "bairros": [
+    "Vista Alegre"
+   ]
+  },
+  {
+   "nome": "Rua Alcides Moreira Lobato",
+   "bairro": "Cid Moreira",
+   "bairros": [
+    "Cid Moreira",
+    "Vila dos Professores"
+   ]
+  },
+  {
+   "nome": "Rua Alcides Saraiva",
+   "bairro": null,
+   "bairros": [
+    "São Miguel",
+    "Tancredo Neves"
+   ]
+  },
+  {
+   "nome": "Rua Alcina Alves Rodrigues",
+   "bairro": "João Ferraz de Araújo",
+   "bairros": [
+    "João Ferraz de Araújo"
+   ]
+  },
+  {
+   "nome": "Rua Aldomiro Souza Lima",
+   "bairro": "Quincas Machado",
+   "bairros": [
+    "Quincas Machado"
+   ]
+  },
+  {
+   "nome": "Rua Altininho",
+   "bairro": "Vista Alegre",
+   "bairros": [
+    "Vista Alegre"
+   ]
+  },
+  {
+   "nome": "Rua Altivo Moreira Lobato",
+   "bairro": "Nova Guaçui",
+   "bairros": [
+    "Nova Guaçui"
+   ]
+  },
+  {
+   "nome": "Rua Alziro Machado de Carvalho",
+   "bairro": "Bairro do Norte",
+   "bairros": [
+    "Bairro do Norte"
+   ]
+  },
+  {
+   "nome": "Rua Amelia Maria Miranda",
+   "bairro": "Antônio Francisco Moreira",
+   "bairros": [
+    "Antônio Francisco Moreira"
+   ]
+  },
+  {
+   "nome": "Rua Amélia Bodevan de Oliveira",
+   "bairro": "Quincas Machado",
+   "bairros": [
+    "Quincas Machado"
+   ]
+  },
+  {
+   "nome": "Rua Ana Lima Lamas",
+   "bairro": null,
+   "bairros": [
+    "João Ferraz de Araújo",
+    "São José"
+   ]
+  },
+  {
+   "nome": "Rua Ana Madalena Gomes Machado",
+   "bairro": null,
+   "bairros": [
+    "Santa Cruz",
+    "Antônio Francisco Moreira",
+    "Vista Alegre",
+    "Cid Moreira"
+   ]
+  },
+  {
+   "nome": "Rua Ananias Honório dos Santos",
+   "bairro": "Manoel Alves Siqueira",
+   "bairros": [
+    "Manoel Alves Siqueira"
+   ]
+  },
+  {
+   "nome": "Rua Angel Martinez Gonzales",
+   "bairro": null,
+   "bairros": [
+    "Gumercindo da Silva Glória",
+    "São Miguel",
+    "Quincas Machado"
+   ]
+  },
+  {
+   "nome": "Rua Antônio Bento de Siqueira",
+   "bairro": "Morada das Palmeiras",
+   "bairros": [
+    "Morada das Palmeiras"
+   ]
+  },
+  {
+   "nome": "Rua Antônio Francisco da Silva",
+   "bairro": null,
+   "bairros": [
+    "Manoel Alves Siqueira",
+    "Nova Guaçui"
+   ]
+  },
+  {
+   "nome": "Rua Antônio J. de Faria",
+   "bairro": "São José",
+   "bairros": [
+    "São José"
+   ]
+  },
+  {
+   "nome": "Rua Antônio José de Faria",
+   "bairro": "São José",
+   "bairros": [
+    "São José"
+   ]
+  },
+  {
+   "nome": "Rua Antônio Lopes de Faria",
+   "bairro": null,
+   "bairros": [
+    "Nova Guaçui",
+    "Manoel Alves Siqueira"
+   ]
+  },
+  {
+   "nome": "Rua Antônio Moreira Lobato",
+   "bairro": null,
+   "bairros": [
+    "Cid Moreira",
+    "Santa Cruz",
+    "Antônio Francisco Moreira"
+   ]
+  },
+  {
+   "nome": "Rua Antônio de Barros",
+   "bairro": "Jorema",
+   "bairros": [
+    "Jorema",
+    "Vista Alegre"
+   ]
+  },
+  {
+   "nome": "Rua Argeu Alves Ferreira de Jesus",
+   "bairro": null,
+   "bairros": [
+    "Manoel Alves Siqueira",
+    "Nova Guaçui"
+   ]
+  },
+  {
+   "nome": "Rua Arstides Couzi",
+   "bairro": "Bela Vista",
+   "bairros": [
+    "Bela Vista"
+   ]
+  },
+  {
+   "nome": "Rua Aurea Saraiva Ferreira",
+   "bairro": "Bairro do Norte",
+   "bairros": [
+    "Bairro do Norte"
+   ]
+  },
+  {
+   "nome": "Rua Aurora de Melo Moraes",
+   "bairro": "Santa Cruz",
+   "bairros": [
+    "Santa Cruz",
+    "Vista Alegre"
+   ]
+  },
+  {
+   "nome": "Rua Avelino Capra",
+   "bairro": null,
+   "bairros": [
+    "Tancredo Neves",
+    "São Miguel"
+   ]
+  },
+  {
+   "nome": "Rua B",
+   "bairro": "Edith Castro",
+   "bairros": [
+    "Edith Castro"
+   ]
+  },
+  {
+   "nome": "Rua Belearmina Ramos Alves",
+   "bairro": "Vila dos Professores",
+   "bairros": [
+    "Vila dos Professores"
+   ]
+  },
+  {
+   "nome": "Rua Belim Cunha",
+   "bairro": "São José",
+   "bairros": [
+    "São José"
+   ]
+  },
+  {
+   "nome": "Rua Bento Gomes de Aguiar",
+   "bairro": null,
+   "bairros": [
+    "Tancredo Neves",
+    "Gumercindo da Silva Glória",
+    "São Miguel"
+   ]
+  },
+  {
+   "nome": "Rua Bom Jesus do Livramento",
+   "bairro": null,
+   "bairros": [
+    "Bairro da Matriz",
+    "Bairro da Palha"
+   ]
+  },
+  {
+   "nome": "Rua C",
+   "bairro": "Edith Castro",
+   "bairros": [
+    "Edith Castro"
+   ]
+  },
+  {
+   "nome": "Rua Capitão Waldir Alves Siqueira",
+   "bairro": null,
+   "bairros": [
+    "Sagrado Coração de Jesus",
+    "Centro"
+   ]
+  },
+  {
+   "nome": "Rua Carlos José Soares",
+   "bairro": "Vila Nova",
+   "bairros": [
+    "Vila Nova"
+   ]
+  },
+  {
+   "nome": "Rua Carlos Spala",
+   "bairro": null,
+   "bairros": [
+    "Bairro do Norte",
+    "Tancredo Neves"
+   ]
+  },
+  {
+   "nome": "Rua Carlos Vieira Rezende",
+   "bairro": null,
+   "bairros": [
+    "Balança",
+    "Edith Castro"
+   ]
+  },
+  {
+   "nome": "Rua Cecilia Poladtreli Costa",
+   "bairro": "Nova Guaçui",
+   "bairros": [
+    "Nova Guaçui"
+   ]
+  },
+  {
+   "nome": "Rua Cercino Augusto Fernandes",
+   "bairro": "Morada das Palmeiras",
+   "bairros": [
+    "Morada das Palmeiras"
+   ]
+  },
+  {
+   "nome": "Rua Chico Mendes",
+   "bairro": "Vale do Sol",
+   "bairros": [
+    "Vale do Sol"
+   ]
+  },
+  {
+   "nome": "Rua Claro Veloso",
+   "bairro": "Antônio Francisco Moreira",
+   "bairros": [
+    "Antônio Francisco Moreira"
+   ]
+  },
+  {
+   "nome": "Rua Clovenilto Catarinozi",
+   "bairro": "Edith Castro",
+   "bairros": [
+    "Edith Castro"
+   ]
+  },
+  {
+   "nome": "Rua Clovis Azevedo de Carvalho",
+   "bairro": "Vila dos Professores",
+   "bairros": [
+    "Vila dos Professores"
+   ]
+  },
+  {
+   "nome": "Rua Comandante Aguiar",
+   "bairro": "Bairro da Matriz",
+   "bairros": [
+    "Bairro da Matriz"
+   ]
+  },
+  {
+   "nome": "Rua Comandante Águiar",
+   "bairro": "Bairro da Matriz",
+   "bairros": [
+    "Bairro da Matriz"
+   ]
+  },
+  {
+   "nome": "Rua Comendador Aguiar",
+   "bairro": null,
+   "bairros": [
+    "Bairro da Matriz",
+    "Vista Alegre"
+   ]
+  },
+  {
+   "nome": "Rua Comendador Waldemiro Azevedo Carvalho",
+   "bairro": "Bairro da Matriz",
+   "bairros": [
+    "Bairro da Matriz"
+   ]
+  },
+  {
+   "nome": "Rua Constante Rosestolato Filho",
+   "bairro": null,
+   "bairros": [
+    "Manoel Alves Siqueira",
+    "Nova Guaçui"
+   ]
+  },
+  {
+   "nome": "Rua Custódio Tristão",
+   "bairro": null,
+   "bairros": [
+    "Quincas Machado",
+    "Centro"
+   ]
+  },
+  {
+   "nome": "Rua D",
+   "bairro": "Edith Castro",
+   "bairros": [
+    "Edith Castro"
+   ]
+  },
+  {
+   "nome": "Rua Demerval Amaral",
+   "bairro": null,
+   "bairros": [
+    "Cid Moreira",
+    "Centro",
+    "Antônio Francisco Moreira"
+   ]
+  },
+  {
+   "nome": "Rua Deude Cade",
+   "bairro": null,
+   "bairros": [
+    "Gumercindo da Silva Glória",
+    "Sagrado Coração de Jesus",
+    "Quincas Machado"
+   ]
+  },
+  {
+   "nome": "Rua Dickson Alves Loureiro",
+   "bairro": "São José",
+   "bairros": [
+    "São José"
+   ]
+  },
+  {
+   "nome": "Rua Dilma Amaral Brum",
+   "bairro": "João Ferraz de Araújo",
+   "bairros": [
+    "João Ferraz de Araújo"
+   ]
+  },
+  {
+   "nome": "Rua Djanira Paraíso Ferreira",
+   "bairro": "Bairro do Norte",
+   "bairros": [
+    "Bairro do Norte"
+   ]
+  },
+  {
+   "nome": "Rua Dolores M. Machado",
+   "bairro": "Bela Vista",
+   "bairros": [
+    "Bela Vista"
+   ]
+  },
+  {
+   "nome": "Rua Dona Bambina",
+   "bairro": null,
+   "bairros": [
+    "São José",
+    "Parque Industrial"
+   ]
+  },
+  {
+   "nome": "Rua Dona Eufrazia",
+   "bairro": null,
+   "bairros": [
+    "Bairro do Norte",
+    "Gumercindo da Silva Glória"
+   ]
+  },
+  {
+   "nome": "Rua Doutor José Rezende Vargas",
+   "bairro": "Cid Moreira",
+   "bairros": [
+    "Cid Moreira",
+    "Santa Cruz"
+   ]
+  },
+  {
+   "nome": "Rua Doutor Nilton Gomes Figueiredo",
+   "bairro": "Quincas Machado",
+   "bairros": [
+    "Quincas Machado"
+   ]
+  },
+  {
+   "nome": "Rua Doutor Paulo Cezar Amaral Farias",
+   "bairro": "Quincas Machado",
+   "bairros": [
+    "Quincas Machado"
+   ]
+  },
+  {
+   "nome": "Rua Doutor Paulo Fernando Couto Soares",
+   "bairro": null,
+   "bairros": [
+    "Tancredo Neves",
+    "Gumercindo da Silva Glória"
+   ]
+  },
+  {
+   "nome": "Rua E",
+   "bairro": "Edith Castro",
+   "bairros": [
+    "Edith Castro"
+   ]
+  },
+  {
+   "nome": "Rua Edison Amorim Nogueira",
+   "bairro": null,
+   "bairros": [
+    "Bairro do Norte",
+    "Gumercindo da Silva Glória"
+   ]
+  },
+  {
+   "nome": "Rua Emilia Miranda Grando",
+   "bairro": "Quincas Machado",
+   "bairros": [
+    "Quincas Machado"
+   ]
+  },
+  {
+   "nome": "Rua Emiliana Emery",
+   "bairro": null,
+   "bairros": [
+    "Sagrado Coração de Jesus",
+    "Quincas Machado"
+   ]
+  },
+  {
+   "nome": "Rua Estevo Alves de Oliveira",
+   "bairro": "Vila dos Professores",
+   "bairros": [
+    "Vila dos Professores",
+    "Antônio Francisco Moreira"
+   ]
+  },
+  {
+   "nome": "Rua Estevão Sapavini",
+   "bairro": null,
+   "bairros": [
+    "Bairro do Norte",
+    "Tancredo Neves"
+   ]
+  },
+  {
+   "nome": "Rua Eugenio de Souza Paixão",
+   "bairro": "Quincas Machado",
+   "bairros": [
+    "Quincas Machado"
+   ]
+  },
+  {
+   "nome": "Rua Eustaquio Batista de Aguiar",
+   "bairro": null,
+   "bairros": [
+    "São José",
+    "Sagrado Coração de Jesus"
+   ]
+  },
+  {
+   "nome": "Rua Fausto Costa Bebber",
+   "bairro": "Manoel Alves Siqueira",
+   "bairros": [
+    "Manoel Alves Siqueira"
+   ]
+  },
+  {
+   "nome": "Rua Felipe Sebastião Muruci",
+   "bairro": "Santa Cecília",
+   "bairros": [
+    "Santa Cecília"
+   ]
+  },
+  {
+   "nome": "Rua Fernando Avelino de Mendonça",
+   "bairro": "Sagrado Coração de Jesus",
+   "bairros": [
+    "Sagrado Coração de Jesus"
+   ]
+  },
+  {
+   "nome": "Rua Francisco Gomes de Azevedo",
+   "bairro": "Tancredo Neves",
+   "bairros": [
+    "Tancredo Neves",
+    "Bairro do Norte"
+   ]
+  },
+  {
+   "nome": "Rua Francisco Martins",
+   "bairro": "São Miguel",
+   "bairros": [
+    "São Miguel"
+   ]
+  },
+  {
+   "nome": "Rua Francisco Ourique",
+   "bairro": null,
+   "bairros": [
+    "Bairro da Palha",
+    "Bairro da Matriz"
+   ]
+  },
+  {
+   "nome": "Rua Frederico Santos Moreira",
+   "bairro": "Santa Cecília",
+   "bairros": [
+    "Santa Cecília"
+   ]
+  },
+  {
+   "nome": "Rua G",
+   "bairro": "Manoel Alves Siqueira",
+   "bairros": [
+    "Manoel Alves Siqueira"
+   ]
+  },
+  {
+   "nome": "Rua Genoel Ferreira Braganca",
+   "bairro": "Vila dos Professores",
+   "bairros": [
+    "Vila dos Professores"
+   ]
+  },
+  {
+   "nome": "Rua Gentil Rosestolato",
+   "bairro": null,
+   "bairros": [
+    "Manoel Alves Siqueira",
+    "Nova Guaçui"
+   ]
+  },
+  {
+   "nome": "Rua Geraldo Viana de Souza",
+   "bairro": "Quincas Machado",
+   "bairros": [
+    "Quincas Machado"
+   ]
+  },
+  {
+   "nome": "Rua Gildo Liparizi",
+   "bairro": "Vista Alegre",
+   "bairros": [
+    "Vista Alegre"
+   ]
+  },
+  {
+   "nome": "Rua Gregório Trigo Gil",
+   "bairro": "Vila Nova",
+   "bairros": [
+    "Vila Nova",
+    "Morada das Palmeiras"
+   ]
+  },
+  {
+   "nome": "Rua Guelmar Valadadres",
+   "bairro": "Sagrado Coração de Jesus",
+   "bairros": [
+    "Sagrado Coração de Jesus"
+   ]
+  },
+  {
+   "nome": "Rua Hermes Azevedo de Carvalho",
+   "bairro": "Balança",
+   "bairros": [
+    "Balança"
+   ]
+  },
+  {
+   "nome": "Rua Hermes Rocha",
+   "bairro": "Vila dos Professores",
+   "bairros": [
+    "Vila dos Professores"
+   ]
+  },
+  {
+   "nome": "Rua Hidelbrando Martins de Carvalho",
+   "bairro": null,
+   "bairros": [
+    "Gumercindo da Silva Glória",
+    "Sagrado Coração de Jesus"
+   ]
+  },
+  {
+   "nome": "Rua Horácio Salatiel",
+   "bairro": "Bairro do Norte",
+   "bairros": [
+    "Bairro do Norte"
+   ]
+  },
+  {
+   "nome": "Rua Imperador Pedro Segundo",
+   "bairro": null,
+   "bairros": [
+    "Vale do Sol",
+    "Cid Moreira"
+   ]
+  },
+  {
+   "nome": "Rua Irmãos Fernandes",
+   "bairro": "Bela Vista",
+   "bairros": [
+    "Bela Vista"
+   ]
+  },
+  {
+   "nome": "Rua Ivan Alves Nogueira",
+   "bairro": "Manoel Alves Siqueira",
+   "bairros": [
+    "Manoel Alves Siqueira",
+    "Nova Guaçui"
+   ]
+  },
+  {
+   "nome": "Rua Ivone Valadão",
+   "bairro": "São José",
+   "bairros": [
+    "São José"
+   ]
+  },
+  {
+   "nome": "Rua Jacinto Spala",
+   "bairro": "Parque Industrial",
+   "bairros": [
+    "Parque Industrial"
+   ]
+  },
+  {
+   "nome": "Rua Jacir Gripp",
+   "bairro": "Manoel Alves Siqueira",
+   "bairros": [
+    "Manoel Alves Siqueira"
+   ]
+  },
+  {
+   "nome": "Rua Jarmina Mapeli",
+   "bairro": "Sagrado Coração de Jesus",
+   "bairros": [
+    "Sagrado Coração de Jesus"
+   ]
+  },
+  {
+   "nome": "Rua Jesse Sanches Garcia",
+   "bairro": "Edith Castro",
+   "bairros": [
+    "Edith Castro"
+   ]
+  },
+  {
+   "nome": "Rua Jesuino Pedro da Silva",
+   "bairro": "Jorema",
+   "bairros": [
+    "Jorema"
+   ]
+  },
+  {
+   "nome": "Rua Joaquim G. de Faria",
+   "bairro": "Santa Cruz",
+   "bairros": [
+    "Santa Cruz",
+    "Vista Alegre",
+    "Cid Moreira"
+   ]
+  },
+  {
+   "nome": "Rua Joaquim Marcelo de Souza",
+   "bairro": "Manoel Alves Siqueira",
+   "bairros": [
+    "Manoel Alves Siqueira"
+   ]
+  },
+  {
+   "nome": "Rua Joaquim Marinho de Carvalho",
+   "bairro": "Sagrado Coração de Jesus",
+   "bairros": [
+    "Sagrado Coração de Jesus",
+    "Quincas Machado"
+   ]
+  },
+  {
+   "nome": "Rua Joaquim Olegário",
+   "bairro": "Vista Alegre",
+   "bairros": [
+    "Vista Alegre"
+   ]
+  },
+  {
+   "nome": "Rua Jonas de Paula",
+   "bairro": "Santa Cruz",
+   "bairros": [
+    "Santa Cruz"
+   ]
+  },
+  {
+   "nome": "Rua José Alves Fernandes",
+   "bairro": "Quincas Machado",
+   "bairros": [
+    "Quincas Machado"
+   ]
+  },
+  {
+   "nome": "Rua José Antônio Rosa",
+   "bairro": "Bela Vista",
+   "bairros": [
+    "Bela Vista"
+   ]
+  },
+  {
+   "nome": "Rua José Azevedo de Carvalho",
+   "bairro": null,
+   "bairros": [
+    "Santa Cruz",
+    "Vila Nova"
+   ]
+  },
+  {
+   "nome": "Rua José Beato",
+   "bairro": "Sagrado Coração de Jesus",
+   "bairros": [
+    "Sagrado Coração de Jesus",
+    "Gumercindo da Silva Glória"
+   ]
+  },
+  {
+   "nome": "Rua José Emery",
+   "bairro": null,
+   "bairros": [
+    "Vila Nova",
+    "Santa Cruz"
+   ]
+  },
+  {
+   "nome": "Rua José Gomes Mendonça",
+   "bairro": "Vila dos Professores",
+   "bairros": [
+    "Vila dos Professores"
+   ]
+  },
+  {
+   "nome": "Rua José Gomes Pereira Filho",
+   "bairro": "Manoel Alves Siqueira",
+   "bairros": [
+    "Manoel Alves Siqueira"
+   ]
+  },
+  {
+   "nome": "Rua José João Barbosa",
+   "bairro": "Manoel Alves Siqueira",
+   "bairros": [
+    "Manoel Alves Siqueira"
+   ]
+  },
+  {
+   "nome": "Rua José Luiz de Oliveira Guducho",
+   "bairro": "João Ferraz de Araújo",
+   "bairros": [
+    "João Ferraz de Araújo"
+   ]
+  },
+  {
+   "nome": "Rua José Marcelino Pereira",
+   "bairro": "Edith Castro",
+   "bairros": [
+    "Edith Castro"
+   ]
+  },
+  {
+   "nome": "Rua José Raphael Lamas",
+   "bairro": null,
+   "bairros": [
+    "Santa Cecília",
+    "João Ferraz de Araújo"
+   ]
+  },
+  {
+   "nome": "Rua José Rodrigues da Silva",
+   "bairro": "Tancredo Neves",
+   "bairros": [
+    "Tancredo Neves"
+   ]
+  },
+  {
+   "nome": "Rua José Silveira de Souza",
+   "bairro": "Santa Cecília",
+   "bairros": [
+    "Santa Cecília"
+   ]
+  },
+  {
+   "nome": "Rua José Teixeira Valentino",
+   "bairro": "Gumercindo da Silva Glória",
+   "bairros": [
+    "Gumercindo da Silva Glória"
+   ]
+  },
+  {
+   "nome": "Rua José Vieira dos Santos",
+   "bairro": "Quincas Machado",
+   "bairros": [
+    "Quincas Machado"
+   ]
+  },
+  {
+   "nome": "Rua José de Carvalho Machado",
+   "bairro": "Bairro do Norte",
+   "bairros": [
+    "Bairro do Norte"
+   ]
+  },
+  {
+   "nome": "Rua José de Paula Borges",
+   "bairro": "Santa Cecília",
+   "bairros": [
+    "Santa Cecília"
+   ]
+  },
+  {
+   "nome": "Rua José de Souza",
+   "bairro": "Centro",
+   "bairros": [
+    "Centro"
+   ]
+  },
+  {
+   "nome": "Rua José Ávila e Silva",
+   "bairro": null,
+   "bairros": [
+    "Vila Nova",
+    "Morada das Palmeiras"
+   ]
+  },
+  {
+   "nome": "Rua Jovelina Ataide",
+   "bairro": "Quincas Machado",
+   "bairros": [
+    "Quincas Machado"
+   ]
+  },
+  {
+   "nome": "Rua João Barbosa da Silveira",
+   "bairro": "Nova Guaçui",
+   "bairros": [
+    "Nova Guaçui"
+   ]
+  },
+  {
+   "nome": "Rua João Batista Figueredo",
+   "bairro": null,
+   "bairros": [
+    "Cid Moreira",
+    "Antônio Francisco Moreira"
+   ]
+  },
+  {
+   "nome": "Rua João Campos Ferreira",
+   "bairro": null,
+   "bairros": [
+    "Santa Cruz",
+    "Cid Moreira"
+   ]
+  },
+  {
+   "nome": "Rua João Goulart",
+   "bairro": null,
+   "bairros": [
+    "Vale do Sol",
+    "Cid Moreira"
+   ]
+  },
+  {
+   "nome": "Rua João Indelecio de Oliveira",
+   "bairro": null,
+   "bairros": [
+    "Vila Nova",
+    "Morada das Palmeiras"
+   ]
+  },
+  {
+   "nome": "Rua João Olegario",
+   "bairro": "Santa Cruz",
+   "bairros": [
+    "Santa Cruz"
+   ]
+  },
+  {
+   "nome": "Rua João Pedro de Andrade",
+   "bairro": "Manoel Alves Siqueira",
+   "bairros": [
+    "Manoel Alves Siqueira"
+   ]
+  },
+  {
+   "nome": "Rua João Sanches Gameiro",
+   "bairro": "Edith Castro",
+   "bairros": [
+    "Edith Castro"
+   ]
+  },
+  {
+   "nome": "Rua João Spala",
+   "bairro": "São José",
+   "bairros": [
+    "São José",
+    "Parque Industrial"
+   ]
+  },
+  {
+   "nome": "Rua João Tulio Constantino",
+   "bairro": null,
+   "bairros": [
+    "Sagrado Coração de Jesus",
+    "Gumercindo da Silva Glória"
+   ]
+  },
+  {
+   "nome": "Rua João de Deus Salgado",
+   "bairro": "Centro",
+   "bairros": [
+    "Centro"
+   ]
+  },
+  {
+   "nome": "Rua Juraci Apricio de Oliveira",
+   "bairro": null,
+   "bairros": [
+    "Antônio Francisco Moreira",
+    "Cid Moreira"
+   ]
+  },
+  {
+   "nome": "Rua Justino José Maria das Dores",
+   "bairro": null,
+   "bairros": [
+    "Vale do Sol",
+    "Cid Moreira"
+   ]
+  },
+  {
+   "nome": "Rua Juvenal Nolasco",
+   "bairro": "Gumercindo da Silva Glória",
+   "bairros": [
+    "Gumercindo da Silva Glória",
+    "Bairro do Norte"
+   ]
+  },
+  {
+   "nome": "Rua Juvenal Serafim de Souza",
+   "bairro": "Santa Cecília",
+   "bairros": [
+    "Santa Cecília"
+   ]
+  },
+  {
+   "nome": "Rua Leda de Souza Campos",
+   "bairro": null,
+   "bairros": [
+    "Bairro do Norte",
+    "Tancredo Neves",
+    "Gumercindo da Silva Glória"
+   ]
+  },
+  {
+   "nome": "Rua Leonora Sartori Santanna",
+   "bairro": "João Ferraz de Araújo",
+   "bairros": [
+    "João Ferraz de Araújo"
+   ]
+  },
+  {
+   "nome": "Rua Levindo Bruzzi",
+   "bairro": "São José",
+   "bairros": [
+    "São José"
+   ]
+  },
+  {
+   "nome": "Rua Lino Guimarães",
+   "bairro": null,
+   "bairros": [
+    "Vale do Sol",
+    "Cid Moreira"
+   ]
+  },
+  {
+   "nome": "Rua Lionizia Lacerda",
+   "bairro": "São José",
+   "bairros": [
+    "São José"
+   ]
+  },
+  {
+   "nome": "Rua Lourenço Ogioni",
+   "bairro": "Santa Cecília",
+   "bairros": [
+    "Santa Cecília"
+   ]
+  },
+  {
+   "nome": "Rua Luis Pires de Andrade",
+   "bairro": null,
+   "bairros": [
+    "Quincas Machado",
+    "Gumercindo da Silva Glória"
+   ]
+  },
+  {
+   "nome": "Rua Luiz Franco Filho",
+   "bairro": "Quincas Machado",
+   "bairros": [
+    "Quincas Machado"
+   ]
+  },
+  {
+   "nome": "Rua Luiz M. de Carvalho",
+   "bairro": "Bairro do Norte",
+   "bairros": [
+    "Bairro do Norte"
+   ]
+  },
+  {
+   "nome": "Rua Manoel Alves Siqueira",
+   "bairro": "Bela Vista",
+   "bairros": [
+    "Bela Vista"
+   ]
+  },
+  {
+   "nome": "Rua Manoel Olegário de Carvalho",
+   "bairro": "Bairro da Matriz",
+   "bairros": [
+    "Bairro da Matriz"
+   ]
+  },
+  {
+   "nome": "Rua Manuel V. de Carvalho",
+   "bairro": "São José",
+   "bairros": [
+    "São José"
+   ]
+  },
+  {
+   "nome": "Rua Maranhão",
+   "bairro": null,
+   "bairros": [
+    "Centro",
+    "Quincas Machado"
+   ]
+  },
+  {
+   "nome": "Rua Marcelo Solrodoni Braga",
+   "bairro": "Santa Cecília",
+   "bairros": [
+    "Santa Cecília"
+   ]
+  },
+  {
+   "nome": "Rua Marcelo Soroldoni Braga",
+   "bairro": "Santa Cecília",
+   "bairros": [
+    "Santa Cecília"
+   ]
+  },
+  {
+   "nome": "Rua Mardoqueu H. Oliveira",
+   "bairro": "Morada das Palmeiras",
+   "bairros": [
+    "Morada das Palmeiras"
+   ]
+  },
+  {
+   "nome": "Rua Marechal Deodoro",
+   "bairro": "Bairro da Matriz",
+   "bairros": [
+    "Bairro da Matriz",
+    "Bairro da Palha"
+   ]
+  },
+  {
+   "nome": "Rua Maria Francisca de Oliveira",
+   "bairro": "Sagrado Coração de Jesus",
+   "bairros": [
+    "Sagrado Coração de Jesus"
+   ]
+  },
+  {
+   "nome": "Rua Maria Gomes de Carvalho",
+   "bairro": "Bairro do Norte",
+   "bairros": [
+    "Bairro do Norte"
+   ]
+  },
+  {
+   "nome": "Rua Maria Gomes de Oliveria",
+   "bairro": "Antônio Francisco Moreira",
+   "bairros": [
+    "Antônio Francisco Moreira"
+   ]
+  },
+  {
+   "nome": "Rua Maria Mendonça Caseli",
+   "bairro": "São José",
+   "bairros": [
+    "São José"
+   ]
+  },
+  {
+   "nome": "Rua Maria R. Silveira",
+   "bairro": "Bela Vista",
+   "bairros": [
+    "Bela Vista"
+   ]
+  },
+  {
+   "nome": "Rua Maria Silva Cunha",
+   "bairro": "São José",
+   "bairros": [
+    "São José"
+   ]
+  },
+  {
+   "nome": "Rua Maria Tereza de Oliveira",
+   "bairro": "Tancredo Neves",
+   "bairros": [
+    "Tancredo Neves",
+    "Bairro do Norte"
+   ]
+  },
+  {
+   "nome": "Rua Maria de Conceição Dutra",
+   "bairro": null,
+   "bairros": [
+    "Vila Nova",
+    "Morada das Palmeiras"
+   ]
+  },
+  {
+   "nome": "Rua Mariana Viana Emery",
+   "bairro": "Vale do Sol",
+   "bairros": [
+    "Vale do Sol",
+    "Cid Moreira"
+   ]
+  },
+  {
+   "nome": "Rua Melicio Alves Monteiro",
+   "bairro": "Vila Nova",
+   "bairros": [
+    "Vila Nova"
+   ]
+  },
+  {
+   "nome": "Rua Milton Pereira de Souza",
+   "bairro": "Tancredo Neves",
+   "bairros": [
+    "Tancredo Neves"
+   ]
+  },
+  {
+   "nome": "Rua Monsenhor Miguel de Sanctis",
+   "bairro": null,
+   "bairros": [
+    "Bairro da Matriz",
+    "Bela Vista"
+   ]
+  },
+  {
+   "nome": "Rua Murilo Emery Lucindo",
+   "bairro": null,
+   "bairros": [
+    "Centro",
+    "Quincas Machado"
+   ]
+  },
+  {
+   "nome": "Rua Mário José Ferraz de Oliveira",
+   "bairro": "Edith Castro",
+   "bairros": [
+    "Edith Castro"
+   ]
+  },
+  {
+   "nome": "Rua Nice Tiradentes",
+   "bairro": "Vila dos Professores",
+   "bairros": [
+    "Vila dos Professores"
+   ]
+  },
+  {
+   "nome": "Rua Nossa Senhora Aparecida",
+   "bairro": null,
+   "bairros": [
+    "São Miguel",
+    "Tancredo Neves"
+   ]
+  },
+  {
+   "nome": "Rua Nossa Senhora Perpétuo Socorro",
+   "bairro": "São Miguel",
+   "bairros": [
+    "São Miguel"
+   ]
+  },
+  {
+   "nome": "Rua Olendino Perdigão",
+   "bairro": "Parque Industrial",
+   "bairros": [
+    "Parque Industrial"
+   ]
+  },
+  {
+   "nome": "Rua Olga Machado Meireles",
+   "bairro": "Quincas Machado",
+   "bairros": [
+    "Quincas Machado"
+   ]
+  },
+  {
+   "nome": "Rua Oliveira Avelino de Mendonça",
+   "bairro": "Vila dos Professores",
+   "bairros": [
+    "Vila dos Professores"
+   ]
+  },
+  {
+   "nome": "Rua Oliveira Souza",
+   "bairro": "Bairro do Norte",
+   "bairros": [
+    "Bairro do Norte"
+   ]
+  },
+  {
+   "nome": "Rua Onilia Maria de Jesus",
+   "bairro": null,
+   "bairros": [
+    "Antônio Francisco Moreira",
+    "Vila dos Professores"
+   ]
+  },
+  {
+   "nome": "Rua Oniltam de Jesus",
+   "bairro": "Antônio Francisco Moreira",
+   "bairros": [
+    "Antônio Francisco Moreira",
+    "Vila dos Professores"
+   ]
+  },
+  {
+   "nome": "Rua Orbelio Algusto Celestino",
+   "bairro": "Vila Nova",
+   "bairros": [
+    "Vila Nova"
+   ]
+  },
+  {
+   "nome": "Rua Osório Marquês",
+   "bairro": "Centro",
+   "bairros": [
+    "Centro"
+   ]
+  },
+  {
+   "nome": "Rua Otacílio José",
+   "bairro": "Sagrado Coração de Jesus",
+   "bairros": [
+    "Sagrado Coração de Jesus"
+   ]
+  },
+  {
+   "nome": "Rua Paulino Justino da Costa",
+   "bairro": "Antônio Francisco Moreira",
+   "bairros": [
+    "Antônio Francisco Moreira",
+    "Vila Nova"
+   ]
+  },
+  {
+   "nome": "Rua Pedro Caetano Domingues",
+   "bairro": "Quincas Machado",
+   "bairros": [
+    "Quincas Machado"
+   ]
+  },
+  {
+   "nome": "Rua Pedro Cassago",
+   "bairro": "Vila dos Professores",
+   "bairros": [
+    "Vila dos Professores"
+   ]
+  },
+  {
+   "nome": "Rua Pedro Couzi",
+   "bairro": "Vista Alegre",
+   "bairros": [
+    "Vista Alegre"
+   ]
+  },
+  {
+   "nome": "Rua Pedrolino Shinaider",
+   "bairro": "Vila Nova",
+   "bairros": [
+    "Vila Nova"
+   ]
+  },
+  {
+   "nome": "Rua Perpétuo Socorro",
+   "bairro": null,
+   "bairros": [
+    "Tancredo Neves",
+    "São Miguel"
+   ]
+  },
+  {
+   "nome": "Rua Primo Carlos Pirovani",
+   "bairro": "Sagrado Coração de Jesus",
+   "bairros": [
+    "Sagrado Coração de Jesus"
+   ]
+  },
+  {
+   "nome": "Rua Professor Antônio Carneiro Ribeiro",
+   "bairro": "Quincas Machado",
+   "bairros": [
+    "Quincas Machado"
+   ]
+  },
+  {
+   "nome": "Rua Projetada",
+   "bairro": "Vale do Sol",
+   "bairros": [
+    "Vale do Sol"
+   ]
+  },
+  {
+   "nome": "Rua Raimundo Pio de Oliveira",
+   "bairro": "Edith Castro",
+   "bairros": [
+    "Edith Castro"
+   ]
+  },
+  {
+   "nome": "Rua Raul Moreira Gomes",
+   "bairro": null,
+   "bairros": [
+    "Vale do Sol",
+    "Cid Moreira"
+   ]
+  },
+  {
+   "nome": "Rua Reverendo Martin Luther King",
+   "bairro": "Cid Moreira",
+   "bairros": [
+    "Cid Moreira"
+   ]
+  },
+  {
+   "nome": "Rua Rio Grande do Norte",
+   "bairro": null,
+   "bairros": [
+    "Sagrado Coração de Jesus",
+    "Bairro do Norte",
+    "Tancredo Neves"
+   ]
+  },
+  {
+   "nome": "Rua Rita Augusta de Oliveira",
+   "bairro": "Santa Cecília",
+   "bairros": [
+    "Santa Cecília"
+   ]
+  },
+  {
+   "nome": "Rua Roberto L R de O Freitas",
+   "bairro": "Manoel Alves Siqueira",
+   "bairros": [
+    "Manoel Alves Siqueira"
+   ]
+  },
+  {
+   "nome": "Rua Roberto Mendes",
+   "bairro": "Sagrado Coração de Jesus",
+   "bairros": [
+    "Sagrado Coração de Jesus"
+   ]
+  },
+  {
+   "nome": "Rua Roldão Alves de Siqueira",
+   "bairro": "João Ferraz de Araújo",
+   "bairros": [
+    "João Ferraz de Araújo"
+   ]
+  },
+  {
+   "nome": "Rua Roldão Souza",
+   "bairro": "Bairro do Norte",
+   "bairros": [
+    "Bairro do Norte"
+   ]
+  },
+  {
+   "nome": "Rua Ruy Barbosa",
+   "bairro": null,
+   "bairros": [
+    "Vista Alegre",
+    "Santa Cruz",
+    "Vila Nova",
+    "Bairro da Palha"
+   ]
+  },
+  {
+   "nome": "Rua Santa Luzia",
+   "bairro": "São Miguel",
+   "bairros": [
+    "São Miguel"
+   ]
+  },
+  {
+   "nome": "Rua Santo Amaro",
+   "bairro": "São José",
+   "bairros": [
+    "São José"
+   ]
+  },
+  {
+   "nome": "Rua Sebastiana Capucho Pirovani",
+   "bairro": null,
+   "bairros": [
+    "Tancredo Neves",
+    "São Miguel"
+   ]
+  },
+  {
+   "nome": "Rua Sebastiana Ida Bazani",
+   "bairro": null,
+   "bairros": [
+    "Vila Nova",
+    "Morada das Palmeiras"
+   ]
+  },
+  {
+   "nome": "Rua Sebastião Alves Ferreira",
+   "bairro": "Bairro da Matriz",
+   "bairros": [
+    "Bairro da Matriz"
+   ]
+  },
+  {
+   "nome": "Rua Sebastião Barreto Carvalho",
+   "bairro": "Vila Nova",
+   "bairros": [
+    "Vila Nova"
+   ]
+  },
+  {
+   "nome": "Rua Sebastião L de Paula",
+   "bairro": null,
+   "bairros": [
+    "São José",
+    "Parque Industrial"
+   ]
+  },
+  {
+   "nome": "Rua Sebastião Miguel da Silva",
+   "bairro": null,
+   "bairros": [
+    "Vila dos Professores",
+    "Antônio Francisco Moreira"
+   ]
+  },
+  {
+   "nome": "Rua Sebastião Simões",
+   "bairro": "Bairro da Palha",
+   "bairros": [
+    "Bairro da Palha"
+   ]
+  },
+  {
+   "nome": "Rua Sebastião Zenito Meireles",
+   "bairro": "Quincas Machado",
+   "bairros": [
+    "Quincas Machado"
+   ]
+  },
+  {
+   "nome": "Rua Senador Atílio vivácqua",
+   "bairro": "Centro",
+   "bairros": [
+    "Centro"
+   ]
+  },
+  {
+   "nome": "Rua Serefim Zini",
+   "bairro": "Vila dos Professores",
+   "bairros": [
+    "Vila dos Professores"
+   ]
+  },
+  {
+   "nome": "Rua São José",
+   "bairro": null,
+   "bairros": [
+    "Parque Industrial",
+    "São José",
+    "João Ferraz de Araújo"
+   ]
+  },
+  {
+   "nome": "Rua São Luis",
+   "bairro": null,
+   "bairros": [
+    "Sagrado Coração de Jesus",
+    "Gumercindo da Silva Glória"
+   ]
+  },
+  {
+   "nome": "Rua São Vicente de Paula",
+   "bairro": "Bairro da Matriz",
+   "bairros": [
+    "Bairro da Matriz"
+   ]
+  },
+  {
+   "nome": "Rua Tenente Arnaldo Tulio",
+   "bairro": null,
+   "bairros": [
+    "Santa Cruz",
+    "Bairro da Palha"
+   ]
+  },
+  {
+   "nome": "Rua Teresa Correa",
+   "bairro": "Sagrado Coração de Jesus",
+   "bairros": [
+    "Sagrado Coração de Jesus"
+   ]
+  },
+  {
+   "nome": "Rua Tereza Bolelli",
+   "bairro": "Quincas Machado",
+   "bairros": [
+    "Quincas Machado"
+   ]
+  },
+  {
+   "nome": "Rua Theodora Leal Valeentim",
+   "bairro": "Quincas Machado",
+   "bairros": [
+    "Quincas Machado"
+   ]
+  },
+  {
+   "nome": "Rua Vale do Sol",
+   "bairro": "Vale do Sol",
+   "bairros": [
+    "Vale do Sol"
+   ]
+  },
+  {
+   "nome": "Rua Vereador Americo Lopes de Macedo",
+   "bairro": "Vila dos Professores",
+   "bairros": [
+    "Vila dos Professores"
+   ]
+  },
+  {
+   "nome": "Rua Vereador João Polido de Oliveira",
+   "bairro": "Morada das Palmeiras",
+   "bairros": [
+    "Morada das Palmeiras"
+   ]
+  },
+  {
+   "nome": "Rua Vicente Alves Fernandes",
+   "bairro": "Gumercindo da Silva Glória",
+   "bairros": [
+    "Gumercindo da Silva Glória"
+   ]
+  },
+  {
+   "nome": "Rua Vicente da Silveira Lopes",
+   "bairro": "Antônio Francisco Moreira",
+   "bairros": [
+    "Antônio Francisco Moreira"
+   ]
+  },
+  {
+   "nome": "Rua Vicentino",
+   "bairro": "São José",
+   "bairros": [
+    "São José"
+   ]
+  },
+  {
+   "nome": "Rua Virgilio Aguiar",
+   "bairro": "Jorema",
+   "bairros": [
+    "Jorema",
+    "Vila Nova"
+   ]
+  },
+  {
+   "nome": "Rua Virgilio Gonçalves de Faria",
+   "bairro": "Santa Cecília",
+   "bairros": [
+    "Santa Cecília"
+   ]
+  },
+  {
+   "nome": "Rua Virgilio Machado",
+   "bairro": "Centro",
+   "bairros": [
+    "Centro"
+   ]
+  },
+  {
+   "nome": "Rua Wagner Pereira Jeveaux",
+   "bairro": "Manoel Alves Siqueira",
+   "bairros": [
+    "Manoel Alves Siqueira",
+    "Nova Guaçui"
+   ]
+  },
+  {
+   "nome": "Rua Waldemar Emery",
+   "bairro": "Sagrado Coração de Jesus",
+   "bairros": [
+    "Sagrado Coração de Jesus"
+   ]
+  },
+  {
+   "nome": "Rua Waldir A Siqueira",
+   "bairro": "Centro",
+   "bairros": [
+    "Centro"
+   ]
+  },
+  {
+   "nome": "Rua Zilma Meireles",
+   "bairro": "Quincas Machado",
+   "bairros": [
+    "Quincas Machado"
+   ]
+  },
+  {
+   "nome": "Rua Zumbi dos Palmares",
+   "bairro": "Vale do Sol",
+   "bairros": [
+    "Vale do Sol",
+    "Cid Moreira"
+   ]
+  },
+  {
+   "nome": "Rua Ângelo Tulio",
+   "bairro": "Bairro do Norte",
+   "bairros": [
+    "Bairro do Norte"
+   ]
+  },
+  {
+   "nome": "Travessa Américo Delfiume",
+   "bairro": "Centro",
+   "bairros": [
+    "Centro"
+   ]
+  },
+  {
+   "nome": "Travessa Antônio Nunes de Moraes",
+   "bairro": "Bairro da Matriz",
+   "bairros": [
+    "Bairro da Matriz"
+   ]
+  }
+ ]
+}
