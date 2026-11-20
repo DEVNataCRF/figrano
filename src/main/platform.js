@@ -72,13 +72,19 @@ class Platform {
    * @param {import('./store').Store} deps.store dados locais (sessão, links, pausas)
    * @param {() => string} deps.getToken token de acesso salvo (criptografado pelo Windows)
    * @param {(token: string) => void} deps.saveToken
+   * @param {() => string} [deps.getRefreshToken] token de renovação (criptografado pelo Windows)
+   * @param {(token: string) => void} [deps.saveRefreshToken]
    * @param {(event: {type: string, order?: object, previous?: string}) => void} [deps.onEvent]
    * @param {typeof fetch} [deps.fetch]
    */
-  constructor({ store, getToken, saveToken, onEvent = () => {}, fetch: fetchImpl = globalThis.fetch }) {
+  constructor({ store, getToken, saveToken, getRefreshToken, saveRefreshToken, onEvent = () => {}, fetch: fetchImpl = globalThis.fetch }) {
     this.store = store;
     this.getToken = getToken;
     this.saveToken = saveToken;
+    let memoryRefresh = '';
+    this.getRefreshToken = getRefreshToken || (() => memoryRefresh);
+    this.saveRefreshToken = saveRefreshToken || ((t) => { memoryRefresh = t; });
+    this.refreshing = null;
     this.onEvent = onEvent;
     this.fetch = fetchImpl;
     this.user = null;
@@ -99,7 +105,39 @@ class Platform {
 
   connected() { return Boolean(this.getToken() && this.user); }
 
-  async request(method, pathname, body, { auth = true, timeoutMs = 15000 } = {}) {
+  /**
+   * Renova a sessão própria do app com o token de renovação (a API dá tokens de acesso curtos).
+   * Uma renovação por vez; se a API recusar, a sessão acaba e o painel pede login de novo.
+   */
+  refreshSession() {
+    this.refreshing ??= (async () => {
+      const refreshToken = this.getRefreshToken();
+      if (!refreshToken) return false;
+      try {
+        const res = await this.fetch(`${this.apiUrl}/auth/refresh`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json', 'X-Client': 'figrano' },
+          body: JSON.stringify({ refreshToken }),
+          signal: AbortSignal.timeout(15000),
+        });
+        const data = await res.json().catch(() => ({}));
+        if (!res.ok || data.success === false || !data.data?.accessToken) {
+          if (res.status === 401) this.logout();
+          return false;
+        }
+        this.saveToken(data.data.accessToken);
+        this.saveRefreshToken(data.data.refreshToken);
+        return true;
+      } catch {
+        return false;
+      } finally {
+        this.refreshing = null;
+      }
+    })();
+    return this.refreshing;
+  }
+
+  async request(method, pathname, body, { auth = true, timeoutMs = 15000, retried = false } = {}) {
     const token = auth ? this.getToken() : '';
     let response;
     try {
@@ -117,6 +155,9 @@ class Platform {
     }
     const data = await response.json().catch(() => ({}));
     if (!response.ok || data.success === false) {
+      if (response.status === 401 && auth && data.error?.code === 'TOKEN_EXPIRED' && !retried) {
+        if (await this.refreshSession()) return this.request(method, pathname, body, { auth, timeoutMs, retried: true });
+      }
       if (response.status === 401 && auth) this.logout();
       throw new PlatformError(data.error?.message || `Erro do sistema (${response.status}).`, response.status, data.error?.code || '');
     }
@@ -134,9 +175,15 @@ class Platform {
     return { user: data.user, accessToken: data.accessToken };
   }
 
-  /** O painel já fez login: o app passa a usar o mesmo token. */
-  async adoptSession(token) {
+  /**
+   * O painel já fez login e abriu uma sessão PRÓPRIA para o app ({ accessToken, refreshToken }):
+   * o robô renova a dele sem derrubar a do painel. Aceita o formato antigo (só o token).
+   */
+  async adoptSession(session) {
+    const token = typeof session === 'string' ? session : String(session?.accessToken || '');
+    const refresh = typeof session === 'object' && session ? String(session.refreshToken || '') : '';
     this.saveToken(token);
+    this.saveRefreshToken(refresh);
     const me = await this.request('GET', '/auth/me');
     this.user = me.user || me;
     this.start();
@@ -157,7 +204,19 @@ class Platform {
 
   logout() {
     this.stop();
+    const token = this.getToken();
+    const refreshToken = this.getRefreshToken();
+    if (token || refreshToken) {
+      // Encerra a sessão do app no servidor também (sem esperar: sair nunca trava)
+      this.fetch(`${this.apiUrl}/auth/logout`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json', ...(token ? { Authorization: `Bearer ${token}` } : {}) },
+        body: JSON.stringify(refreshToken ? { refreshToken } : {}),
+        signal: AbortSignal.timeout(5000),
+      }).catch(() => {});
+    }
     this.saveToken('');
+    this.saveRefreshToken('');
     this.user = null;
     this.orders = [];
     this.knownStatus.clear();

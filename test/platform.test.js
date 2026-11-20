@@ -220,3 +220,55 @@ test('status mudado com o app fechado: ao abrir, avisa (só se a mudança for re
   await reopened.pollOrders();
   assert.equal(events.filter((e) => e.type === 'order_status').length, 0);
 });
+
+test('sessão própria do robô: token vencido é renovado sozinho e a chamada é repetida', async () => {
+  const store = new Store(null);
+  store.updateSettings('platform', { apiUrl: 'http://api.test/api/v1', siteUrl: 'http://site.test' });
+  let token = '';
+  let refresh = '';
+  const calls = [];
+  const fetch = async (url, init = {}) => {
+    const path = url.replace('http://api.test/api/v1', '');
+    const body = init.body ? JSON.parse(init.body) : null;
+    calls.push({ path, auth: init.headers?.Authorization, body });
+    const json = (status, payload) => ({ ok: status < 400, status, json: async () => payload });
+    if (path === '/auth/refresh') {
+      if (body.refreshToken !== 'r1') return json(401, { success: false, error: { code: 'INVALID_REFRESH_TOKEN', message: 'x' } });
+      return json(200, { success: true, data: { accessToken: 'a2', refreshToken: 'r2', expiresIn: 900 } });
+    }
+    if (path === '/auth/me') {
+      if (init.headers?.Authorization === 'Bearer a1') return json(401, { success: false, error: { code: 'TOKEN_EXPIRED', message: 'venceu' } });
+      return json(200, { success: true, data: { user: { id: 'u', name: 'Sil', role: 'OWNER_ADMIN' } } });
+    }
+    return json(200, { success: true, data: [] });
+  };
+  const platform = new Platform({
+    store,
+    getToken: () => token,
+    saveToken: (t) => { token = t; },
+    getRefreshToken: () => refresh,
+    saveRefreshToken: (t) => { refresh = t; },
+    fetch,
+  });
+  const user = await platform.adoptSession({ accessToken: 'a1', refreshToken: 'r1', expiresIn: 900 });
+  platform.stop();
+  assert.equal(user.name, 'Sil');
+  assert.equal(token, 'a2');
+  assert.equal(refresh, 'r2');
+  assert.ok(calls.some((c) => c.path === '/auth/refresh'));
+
+  // Renovação recusada: sessão acaba (sem ficar insistindo com token morto)
+  token = 'a1';
+  refresh = 'r-morto';
+  await assert.rejects(() => platform.request('GET', '/auth/me'));
+  assert.equal(token, '');
+  assert.equal(refresh, '');
+  assert.ok(calls.some((c) => c.path === '/auth/logout'));
+});
+
+test('adoptSession aceita o formato antigo (só o token)', async () => {
+  const { platform, api } = setup();
+  await platform.adoptSession('tok-velho');
+  platform.stop();
+  assert.ok(api.calls.some((c) => c.path === '/auth/me' && c.auth === 'Bearer tok-velho'));
+});

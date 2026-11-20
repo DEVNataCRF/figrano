@@ -99,6 +99,21 @@ const readApiKey = () => decryptSecret(store.settings.ai.apiKeyEncrypted);
 const writeApiKey = (key) => store.updateSettings('ai', { apiKeyEncrypted: encryptSecret(key) });
 const readPlatformToken = () => decryptSecret(store.settings.platform.tokenEncrypted);
 const writePlatformToken = (token) => store.updateSettings('platform', { tokenEncrypted: encryptSecret(token) });
+const readPlatformRefresh = () => decryptSecret(store.settings.platform.refreshEncrypted);
+const writePlatformRefresh = (token) => store.updateSettings('platform', { refreshEncrypted: encryptSecret(token) });
+
+/**
+ * Cofre do painel embutido: guarda a sessão do painel criptografada pelo Windows (safeStorage),
+ * em vez do localStorage da página. Só chaves "sabores.*".
+ */
+function vaultKey(key) {
+  const clean = String(key || '');
+  if (!/^sabores\.[a-z0-9._-]{1,56}$/i.test(clean)) throw new Error('Chave do cofre inválida.');
+  return clean;
+}
+function vaultData() {
+  return { ...(store.settings.platform.vault || {}) };
+}
 
 /**
  * O robô continua falando com um "store", mas cardápio, regras da loja e pedidos vêm da
@@ -491,7 +506,21 @@ const api = {
   },
 
   // Login: o mesmo do painel (o painel faz login e passa o token para o app)
-  'session:adopt': (token) => platform.adoptSession(String(token || '')),
+  'session:adopt': (session) => platform.adoptSession(session),
+  'secure:get': (key) => {
+    const stored = vaultData()[vaultKey(key)];
+    return stored ? decryptSecret(stored) || null : null;
+  },
+  'secure:set': (key, value) => {
+    const text = String(value || '');
+    if (text.length > 4096) throw new Error('Valor grande demais para o cofre.');
+    store.updateSettings('platform', { vault: { ...vaultData(), [vaultKey(key)]: encryptSecret(text) } });
+  },
+  'secure:delete': (key) => {
+    const next = vaultData();
+    delete next[vaultKey(key)];
+    store.updateSettings('platform', { vault: next });
+  },
   'session:logout': () => platform.logout(),
   'platform:configure': ({ apiUrl, siteUrl, buffetUrl }) => {
     const clean = (value, label) => {
@@ -796,6 +825,8 @@ if (!app.requestSingleInstanceLock()) {
       store,
       getToken: readPlatformToken,
       saveToken: writePlatformToken,
+      getRefreshToken: readPlatformRefresh,
+      saveRefreshToken: writePlatformRefresh,
       onEvent: (event) => { onPlatformEvent(event).catch((error) => console.error('[sabores] aviso falhou:', error)); },
     });
     botStore = connectedStore(store, platform);
