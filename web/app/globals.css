@@ -126,6 +126,8 @@ a { color: var(--accent); }
 
 /* ---------------------------------------------------------------- produtos */
 .category { padding-top: var(--s6); scroll-margin-top: 120px; }
+/* A última categoria precisa de altura para chegar ao topo quando a aba dela é tocada */
+.category:last-of-type { min-height: calc(100dvh - 120px); }
 .category h2 { margin-bottom: var(--s3); }
 .products { display: grid; gap: var(--s3); }
 .product {

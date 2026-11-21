@@ -98,17 +98,38 @@ export default function OrderApp({ menu: data, refCode }) {
   useEffect(() => { if (cartStore === slug) writeStorage(cartKey(slug), savedCart); }, [slug, savedCart, cartStore]);
 
   // Destaca na barra a categoria que está na tela.
+  // Depois de um clique na aba, a rolagem suave passa por outras seções: o destaque fica na escolhida.
+  const tabLock = useRef(0);
+  const tabsRef = useRef(null);
   useEffect(() => {
-    const observer = new IntersectionObserver((entries) => {
-      const visible = entries.filter((e) => e.isIntersecting).sort((a, b) => a.boundingClientRect.top - b.boundingClientRect.top)[0];
-      if (visible) setActiveCat(visible.target.id.replace('cat-', ''));
-    }, { rootMargin: '-120px 0px -65% 0px' });
-    for (const category of menu) {
-      const el = document.getElementById(`cat-${category.id}`);
-      if (el) observer.observe(el);
-    }
-    return () => observer.disconnect();
+    // Ativa a última seção cujo título já chegou perto do topo (logo abaixo da barra fixa)
+    let frame = 0;
+    let retry = 0;
+    const update = () => {
+      frame = 0;
+      // Ainda na rolagem do clique: confere de novo quando a trava acabar
+      if (Date.now() < tabLock.current) { clearTimeout(retry); retry = setTimeout(update, tabLock.current - Date.now() + 20); return; }
+      let current = null;
+      for (const category of menu) {
+        const el = document.getElementById(`cat-${category.id}`);
+        if (el && el.getBoundingClientRect().top <= 200) current = category.id;
+      }
+      if (current) setActiveCat(current);
+    };
+    const onScroll = () => { if (!frame) frame = requestAnimationFrame(update); };
+    window.addEventListener('scroll', onScroll, { passive: true });
+    update();
+    return () => { window.removeEventListener('scroll', onScroll); cancelAnimationFrame(frame); clearTimeout(retry); };
   }, [menu, query]);
+
+  // No celular as abas rolam de lado: mantém a ativa à vista sem mexer na rolagem da página.
+  useEffect(() => {
+    const nav = tabsRef.current;
+    const tab = nav?.querySelector('a[aria-current="true"]');
+    if (!nav || !tab) return;
+    const left = tab.offsetLeft - nav.offsetLeft;
+    if (left < nav.scrollLeft || left + tab.offsetWidth > nav.scrollLeft + nav.clientWidth) nav.scrollTo({ left: Math.max(0, left - 16), behavior: 'smooth' });
+  }, [activeCat]);
 
   // Trava a rolagem do fundo enquanto uma janela está aberta.
   useEffect(() => {
@@ -194,9 +215,9 @@ export default function OrderApp({ menu: data, refCode }) {
               <input type="search" placeholder="Buscar no cardápio" value={query} onChange={(e) => setQuery(e.target.value)} />
             </label>
             {!query && menu.length > 1 && (
-              <nav className="tabs" aria-label="Categorias">
+              <nav ref={tabsRef} className="tabs" aria-label="Categorias">
                 {menu.map((category) => (
-                  <a key={category.id} href={`#cat-${category.id}`} aria-current={activeCat === category.id}>{category.name}</a>
+                  <a key={category.id} href={`#cat-${category.id}`} aria-current={activeCat === category.id} onClick={() => { tabLock.current = Date.now() + 1200; setActiveCat(category.id); }}>{category.name}</a>
                 ))}
               </nav>
             )}
