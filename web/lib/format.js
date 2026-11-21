@@ -19,3 +19,11 @@ export const STATUS_STEPS = [
   { status: 'READY_FOR_PICKUP', label: 'Pronto para retirar' },
   { status: 'DONE', label: 'Concluído' },
 ];
+
+/** Telefone para leitura: 28999990000 → (28) 99999-0000. Outro formato volta como veio. */
+export function displayPhone(raw) {
+  const d = String(raw || '').replace(/\D/g, '').replace(/^55(?=\d{10,11}$)/, '');
+  if (d.length === 11) return `(${d.slice(0, 2)}) ${d.slice(2, 7)}-${d.slice(7)}`;
+  if (d.length === 10) return `(${d.slice(0, 2)}) ${d.slice(2, 6)}-${d.slice(6)}`;
+  return String(raw || '');
+}

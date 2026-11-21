@@ -127,14 +127,22 @@ a { color: var(--accent); }
 /* ---------------------------------------------------------------- produtos */
 .category { padding-top: var(--s6); scroll-margin-top: 120px; }
 /* A última categoria precisa de altura para chegar ao topo quando a aba dela é tocada */
-.category:last-of-type { min-height: calc(100dvh - 120px); }
+.category:last-of-type { min-height: calc(100dvh - 120px - var(--footer-h, 0px)); }
 .category h2 { margin-bottom: var(--s3); }
 .products { display: grid; gap: var(--s3); }
+/* O cartão é um bloco: o botão de abrir ocupa tudo e o "+" fica por cima, no canto */
 .product {
-  display: flex; gap: var(--s4); align-items: stretch; width: 100%; text-align: left;
-  padding: var(--s4); border: 1px solid var(--line); border-radius: var(--r-card);
+  position: relative; border: 1px solid var(--line); border-radius: var(--r-card);
   background: var(--surface); box-shadow: var(--shadow-card); transition: border-color 120ms;
 }
+.product__open {
+  display: flex; gap: var(--s4); align-items: stretch; width: 100%; text-align: left;
+  padding: var(--s4); border: 0; border-radius: inherit; background: none; color: inherit; font: inherit; cursor: pointer;
+}
+.product__open:disabled { cursor: default; }
+.product__quick { position: absolute; left: var(--s4); bottom: var(--s4); z-index: 1; }
+.stepper--card { background: var(--accent-soft); border-color: transparent; }
+.stepper--card span { color: var(--accent); }
 .product:hover { border-color: var(--muted); }
 .product--out { opacity: 0.55; cursor: default; }
 .product--out:hover { border-color: var(--line); }
@@ -226,6 +234,11 @@ a { color: var(--accent); }
   .sheet__panel { border-radius: var(--r-sheet); max-height: 88dvh; }
   .sheet__panel--product { max-width: 520px; overflow: hidden auto; }
 }
+/* Fechamento no PC: janela larga com dados à esquerda e pagamento/revisão à direita */
+@media (min-width: 900px) {
+  .sheet__panel--wide { max-width: 920px; }
+  .checkout__cols { display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 1fr); gap: var(--s5); align-items: start; }
+}
 
 /* ------------------------------------------------- página de acompanhamento */
 .page { max-width: var(--page); margin: 0 auto; padding: var(--s5) var(--s4) var(--s7); }
@@ -267,8 +280,10 @@ a { color: var(--accent); }
 .product { box-shadow: var(--shadow-card); transition: border-color 140ms, box-shadow 140ms; }
 .product:hover { border-color: var(--accent); }
 .product__name { font-weight: 800; }
-.product__action { display: flex; align-items: center; justify-content: space-between; gap: 8px; color: var(--accent); font-size: 14px; font-weight: 700; }
-.product__add { display: grid; place-items: center; width: 44px; height: 44px; flex: none; border-radius: 50%; background: var(--accent-soft); font-size: 24px; }
+/* Espaço reservado no cartão para o "+" (ou o "− 1 +") que fica por cima */
+.product__action { display: block; height: 44px; margin-top: var(--s2); }
+.product__add { display: grid; place-items: center; width: 44px; height: 44px; flex: none; border: 0; border-radius: 50%; background: var(--accent-soft); color: var(--accent); font-size: 24px; line-height: 1; cursor: pointer; }
+.product__add:hover { background: var(--accent); color: var(--accent-ink); }
 .stepper--sm button, .icon-btn { min-width: 44px; min-height: 44px; }
 .festa-link { font-size: 14px; padding: 8px 12px; background: var(--surface); border-color: var(--line); }
 .checkout .group { border: 1px solid var(--line); border-radius: var(--r-card); padding: 16px; background: var(--surface); }
@@ -315,8 +330,8 @@ a { color: var(--accent); }
 
 /* ------------------------------------------------------------ animações e toque */
 /* Toque no celular: o elemento afunda de leve (o hover não existe no dedo) */
-.product, .btn, .stepper button, .icon-btn, .tabs a, .chip, .seg button { transition: transform 120ms ease, border-color 120ms, background-color 120ms, box-shadow 160ms; }
-.product:active:not(:disabled), .btn:active:not(:disabled), .icon-btn:active { transform: scale(0.97); }
+.product, .btn, .stepper button, .icon-btn, .tabs a, .chip, .seg button, .product__add { transition: transform 120ms ease, border-color 120ms, background-color 120ms, color 120ms, box-shadow 160ms; }
+.product:has(.product__open:active:not(:disabled)), .btn:active:not(:disabled), .icon-btn:active, .product__add:active { transform: scale(0.97); }
 .stepper button:active:not(:disabled) { transform: scale(0.88); }
 @media (hover: hover) {
   .product:hover:not(.product--out) { transform: translateY(-1px); box-shadow: var(--shadow-float); }
@@ -351,7 +366,7 @@ a { color: var(--accent); }
 
 @media (prefers-reduced-motion: reduce) {
   .product, .btn, .stepper button, .icon-btn, .tabs a, .photo, .toolbar { transition: none; }
-  .product:active:not(:disabled), .btn:active:not(:disabled), .icon-btn:active, .stepper button:active:not(:disabled) { transform: none; }
+  .product:has(.product__open:active), .btn:active:not(:disabled), .icon-btn:active, .stepper button:active:not(:disabled), .product__add:active { transform: none; }
   .skeleton { animation: none; }
 }
 
@@ -372,3 +387,43 @@ a { color: var(--accent); }
 @supports (-moz-appearance: none) {
   html, .sheet__panel { scrollbar-width: thin; scrollbar-color: rgb(43 22 8 / 0.3) transparent; }
 }
+
+/* ------------------------------------------------------ fechamento e sacola */
+.checkout__col { display: grid; gap: var(--s5); align-content: start; }
+.checkout__cols { display: grid; gap: var(--s5); }
+.contact-summary { display: flex; align-items: start; justify-content: space-between; gap: var(--s3); padding: var(--s3) var(--s4); border-radius: var(--r-control); background: var(--bar); }
+.contact-summary p { margin: 0; font-size: 14px; }
+.contact-summary p + p { margin-top: 2px; color: var(--muted); }
+.contact-summary .link { flex: none; font-weight: 700; }
+.minbar { display: grid; gap: var(--s2); }
+.minbar__track { height: 8px; border-radius: 999px; background: var(--bar); overflow: hidden; }
+.minbar__fill { height: 100%; border-radius: inherit; background: linear-gradient(90deg, var(--accent), #F4B012); }
+.minbar .hint { margin: 0; }
+
+/* ------------------------------------------------------------------ rodapé */
+.site-footer { margin-top: var(--s6); padding: var(--s6) var(--s4) calc(var(--s7) + 72px + env(safe-area-inset-bottom)); background: var(--ink); color: var(--bg); font-size: 14px; }
+.site-footer__inner { max-width: var(--wide); margin: 0 auto; display: grid; gap: var(--s5); }
+.site-footer p { margin: 0 0 var(--s1); }
+.site-footer a { color: #FFD27A; font-weight: 700; }
+.site-footer__name { font-family: var(--font-display); font-size: 20px; font-weight: 700; }
+.site-footer__title { font-weight: 800; margin-bottom: var(--s2) !important; }
+.site-footer__hours { margin: 0; display: grid; gap: 2px; max-width: 280px; }
+.site-footer__hours div { display: flex; justify-content: space-between; gap: var(--s4); }
+.site-footer__hours dd { margin: 0; opacity: 0.85; }
+@media (min-width: 900px) {
+  .site-footer { padding: var(--s6) var(--s6) var(--s6); }
+  .site-footer__inner { grid-template-columns: 1fr auto; }
+}
+
+/* -------------------------------------------- acompanhamento: linha do tempo */
+.eta { margin: var(--s2) 0 0; padding: var(--s2) var(--s3); border-radius: var(--r-control); background: var(--ok-soft); color: var(--ok); font-size: 15px; }
+.steps li { display: grid; grid-template-columns: 24px 1fr; gap: var(--s3); align-items: center; position: relative; padding: var(--s3) 0; }
+.steps li::before { content: none; }
+.steps__dot { position: relative; z-index: 1; display: grid; place-items: center; width: 22px; height: 22px; border-radius: 50%; border: 2px solid var(--line); background: var(--bg); color: #fff; }
+/* Linha ligando as etapas */
+.steps li:not(:last-child)::after { content: ""; position: absolute; left: 10px; top: calc(50% + 11px); height: calc(100% - 22px); width: 2px; background: var(--line); }
+.steps li[data-state="done"]::after { background: var(--accent); }
+.steps li[data-state="done"] .steps__dot { background: var(--accent); border-color: var(--accent); }
+.steps li[data-state="now"] .steps__dot { border-color: var(--accent); background: var(--accent-soft); animation: etapa-atual 1.6s ease-in-out infinite; }
+@keyframes etapa-atual { 0%, 100% { box-shadow: 0 0 0 0 rgb(202 4 1 / 0.35); } 50% { box-shadow: 0 0 0 6px rgb(202 4 1 / 0); } }
+@media (prefers-reduced-motion: reduce) { .steps li[data-state="now"] .steps__dot { animation: none; } }

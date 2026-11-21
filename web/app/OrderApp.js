@@ -2,7 +2,7 @@
 
 import { useEffect, useMemo, useRef, useState } from 'react';
 import { AnimatePresence, MotionConfig, motion, useIsPresent, useReducedMotion } from 'motion/react';
-import { money, whatsappLink } from '../lib/format.js';
+import { displayPhone, money, whatsappLink } from '../lib/format.js';
 import { PAYMENT_LABELS, placeOrder } from '../lib/api.js';
 import StorePhoto from './StorePhoto.js';
 import { formatDeliveryAddress, restoreDeliveryContact } from '../lib/delivery-address.js';
@@ -40,7 +40,8 @@ function fromApi(data) {
       rawHours: c.hours,
       hours: DAY_NAMES.map((name, day) => {
         const slot = c.hours?.[String(day)];
-        return { name, text: !slot || slot.closed ? 'Fechado' : `${slot.open} às ${slot.close}` };
+        // Abrir e fechar no mesmo horário = o dia todo (é assim que a regra de aberto/fechado entende)
+        return { name, text: !slot || slot.closed ? 'Fechado' : slot.open === slot.close ? 'Dia todo' : `${slot.open} às ${slot.close}` };
       }),
     },
     menu: data.categories.map((category) => ({
@@ -99,6 +100,15 @@ export default function OrderApp({ menu: data, refCode }) {
   }, [toast]);
   // Barra de busca/abas presa no topo ganha sombra, para se perceber que ela ficou fixa
   const toolbarRef = useRef(null);
+  // Altura do rodapé: a última categoria desconta isso para ainda conseguir subir até as abas
+  const footerRef = useRef(null);
+  useEffect(() => {
+    const el = footerRef.current;
+    if (!el || typeof ResizeObserver === 'undefined') return;
+    const observer = new ResizeObserver(() => document.documentElement.style.setProperty('--footer-h', `${el.offsetHeight}px`));
+    observer.observe(el);
+    return () => observer.disconnect();
+  }, []);
   const [stuck, setStuck] = useState(false);
   useEffect(() => {
     const check = () => setStuck((toolbarRef.current?.getBoundingClientRect().top ?? 1) <= 0.5);
@@ -175,6 +185,12 @@ export default function OrderApp({ menu: data, refCode }) {
   const subtotal = cart.reduce((sum, l) => sum + l.qty * (items.get(l.itemId)?.price || 0), 0);
   const whatsapp = whatsappLink(store.whatsapp);
   const qtyInCart = (itemId) => cart.filter((l) => l.itemId === itemId).reduce((n, l) => n + l.qty, 0);
+  // Toque rápido no cartão: soma 1 (sem observação) ou tira 1 da linha mais recente do produto
+  const quickAdd = (item) => { addToCart(item.id, 1, ''); setToast({ id: Date.now(), text: `1× ${item.name} na sacola` }); };
+  const removeOne = (itemId) => {
+    const line = [...cart].reverse().find((l) => l.itemId === itemId);
+    if (line) setQty(line.key, line.qty - 1);
+  };
 
   const facts = [
     store.prepMinutes > 0 && `${store.prepMinutes}–${store.prepMinutes + 15} min`,
@@ -251,21 +267,31 @@ export default function OrderApp({ menu: data, refCode }) {
                 {category.items.map((item) => {
                   const inCart = qtyInCart(item.id);
                   return (
-                    <button
-                      key={item.id}
-                      type="button"
-                      className={`product ${item.available ? '' : 'product--out'}`}
-                      onClick={() => item.available && setProduct(item)}
-                      disabled={!item.available}
-                    >
-                      <span className="product__text">
-                        <span className="product__name">{inCart > 0 && <span className="product__count">{inCart}x</span>}{item.name}</span>
-                        {item.description && <span className="product__desc">{item.description}</span>}
-                        <span className="product__price num">{item.available ? money(item.price) : 'Esgotado'}</span>
-                        <span className="product__action">{inCart > 0 ? 'Adicionar mais' : 'Escolher produto'} <span className="product__add" aria-hidden="true">+</span></span>
-                      </span>
-                      <StorePhoto className="product__img" src={item.photo} alt="" />
-                    </button>
+                    <div key={item.id} className={`product ${item.available ? '' : 'product--out'}${item.photo ? '' : ' product--sem-foto'}`}>
+                      {/* O cartão inteiro abre os detalhes (observação, quantidade); o "+" ao lado adiciona direto */}
+                      <button type="button" className="product__open" onClick={() => item.available && setProduct(item)} disabled={!item.available}>
+                        <span className="product__text">
+                          <span className="product__name">{inCart > 0 && <span className="product__count">{inCart}x</span>}{item.name}</span>
+                          {item.description && <span className="product__desc">{item.description}</span>}
+                          <span className="product__price num">{item.available ? money(item.price) : 'Esgotado'}</span>
+                          <span className="product__action" aria-hidden="true" />
+                        </span>
+                        {item.photo && <StorePhoto className="product__img" src={item.photo} alt="" />}
+                      </button>
+                      {item.available && canOrder && (
+                        <div className="product__quick">
+                          {inCart > 0 ? (
+                            <div className="stepper stepper--sm stepper--card">
+                              <button type="button" onClick={() => removeOne(item.id)} aria-label={`Tirar um ${item.name}`}>−</button>
+                              <AnimatedQuantity value={inCart} />
+                              <button type="button" onClick={() => quickAdd(item)} aria-label={`Mais um ${item.name}`}>+</button>
+                            </div>
+                          ) : (
+                            <button type="button" className="product__add" onClick={() => quickAdd(item)} aria-label={`Adicionar 1 ${item.name} à sacola`}>+</button>
+                          )}
+                        </div>
+                      )}
+                    </div>
                   );
                 })}
               </div>
@@ -288,6 +314,22 @@ export default function OrderApp({ menu: data, refCode }) {
           </button>
         </motion.div>
       )}
+
+      <footer ref={footerRef} className="site-footer" inert={product || sheet || overlayMounted ? true : undefined}>
+        <div className="site-footer__inner">
+          <div>
+            <p className="site-footer__name">{store.name}</p>
+            {store.address && <p>{store.address}</p>}
+            {store.city && !store.address.toLowerCase().includes(store.city.toLowerCase()) && <p>{store.city}</p>}
+            {whatsapp && <p><a href={whatsapp}>{store.owner ? `Falar com ${contactOf(store.owner).a} no WhatsApp` : 'Falar no WhatsApp'}</a></p>}
+            {BUFFET_URL && <p><a href={`${BUFFET_URL}/#orcamento`}>Buffet e salgados para festa</a></p>}
+          </div>
+          <div>
+            <p className="site-footer__title">Horários</p>
+            <dl className="site-footer__hours">{store.hours.map((h) => <div key={h.name}><dt>{h.name}</dt><dd>{h.text}</dd></div>)}</dl>
+          </div>
+        </div>
+      </footer>
 
       <div className="toast-area" role="status" aria-live="polite">
         <AnimatePresence>
@@ -315,7 +357,7 @@ export default function OrderApp({ menu: data, refCode }) {
             onCheckout={() => setSheet('checkout')} bare />
         </Sheet>
       ) : sheet === 'checkout' ? (
-        <Sheet key="checkout" title="Finalizar pedido" onClose={() => setSheet(null)}>
+        <Sheet key="checkout" title="Finalizar pedido" wide onClose={() => setSheet(null)}>
           <Checkout
             slug={slug}
             refCode={refCode}
@@ -373,13 +415,13 @@ function useSheetFocus(onClose, focusKey) {
   return ref;
 }
 
-function Sheet({ title, onClose, children }) {
+function Sheet({ title, onClose, children, wide = false }) {
   const panel = useSheetFocus(onClose, title);
   const present = useIsPresent();
   const reduced = useReducedMotion();
   return (
     <motion.div className="sheet" inert={!present ? true : undefined} initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }} transition={{ duration: reduced ? 0 : 0.16 }} onClick={(event) => { if (event.target === event.currentTarget) onClose(); }}>
-      <motion.div ref={panel} tabIndex={-1} className="sheet__panel" role="dialog" aria-modal="true" aria-hidden={!present || undefined} aria-label={title} initial={{ y: reduced ? 0 : 16, opacity: 0 }} animate={{ y: 0, opacity: 1 }} exit={{ y: reduced ? 0 : 8, opacity: 0 }} transition={{ duration: reduced ? 0 : 0.2, ease: 'easeOut' }}>
+      <motion.div ref={panel} tabIndex={-1} className={`sheet__panel${wide ? ' sheet__panel--wide' : ''}`} role="dialog" aria-modal="true" aria-hidden={!present || undefined} aria-label={title} initial={{ y: reduced ? 0 : 16, opacity: 0 }} animate={{ y: 0, opacity: 1 }} exit={{ y: reduced ? 0 : 8, opacity: 0 }} transition={{ duration: reduced ? 0 : 0.2, ease: 'easeOut' }}>
         <div className="sheet__head">
           <h2>{title}</h2>
           <button type="button" className="icon-btn" onClick={onClose} aria-label="Fechar">
@@ -404,7 +446,7 @@ function ProductSheet({ item, canOrder, onClose, onAdd }) {
         <button type="button" className="icon-btn icon-btn--float" onClick={onClose} aria-label="Fechar">
           <svg viewBox="0 0 20 20" width="20" height="20" aria-hidden="true"><path d="M5 5l10 10M15 5L5 15" stroke="currentColor" strokeWidth="2" strokeLinecap="round" /></svg>
         </button>
-        <StorePhoto className="pd__img" src={item.photo} alt="" />
+        {item.photo && <StorePhoto className="pd__img" src={item.photo} alt="" />}
         <div className="pd__body">
           <h2>{item.name}</h2>
           {item.description && <p className="muted">{item.description}</p>}
@@ -470,7 +512,14 @@ function Bag({ cart, items, setQty, subtotal, store, canOrder, onCheckout, bare 
         <div><span>Subtotal</span><span>{money(subtotal)}</span></div>
         {store.delivery && <div className="muted"><span>Entrega</span><span>{store.neighborhoods.length ? 'conforme o bairro' : store.deliveryFee ? money(store.deliveryFee) : 'Grátis'}</span></div>}
       </div>
-      {belowMin && <p className="hint">Faltam {money(store.minOrder - subtotal)} para o pedido mínimo de {money(store.minOrder)}.</p>}
+      {belowMin && (
+        <div className="minbar">
+          <div className="minbar__track" role="progressbar" aria-label="Pedido mínimo" aria-valuemin={0} aria-valuemax={store.minOrder} aria-valuenow={Math.round(subtotal * 100) / 100}>
+            <motion.div className="minbar__fill" initial={false} animate={{ width: `${Math.min(100, (subtotal / store.minOrder) * 100)}%` }} transition={{ type: 'spring', stiffness: 260, damping: 30 }} />
+          </div>
+          <p className="hint">Faltam {money(store.minOrder - subtotal)} para o pedido mínimo de {money(store.minOrder)}.</p>
+        </div>
+      )}
       <button type="button" className="btn btn--primary btn--block" disabled={!canOrder || belowMin} onClick={onCheckout}>
         Finalizar pedido
       </button>
@@ -509,7 +558,14 @@ function Checkout({ slug, refCode, store, items, cart, onPlaced }) {
   const [error, setError] = useState('');
   const [sending, setSending] = useState(false);
 
-  useEffect(() => { setForm(restoreDeliveryContact(readStorage(`sabores:delivery:customer:${slug}`, {}))); }, [slug]);
+  const [editingContact, setEditingContact] = useState(true);
+  useEffect(() => {
+    const saved = restoreDeliveryContact(readStorage(`sabores:delivery:customer:${slug}`, {}));
+    setForm(saved);
+    // Dados completos de um pedido anterior: mostra o resumo; incompletos: abre os campos
+    const hasAddress = saved.address.trim() && (saved.noNumber || saved.number.trim()) && !saved.legacyAddress;
+    setEditingContact(!(saved.name.trim() && saved.phone.trim() && hasAddress));
+  }, [slug]);
 
   const update = (key) => (event) => setForm((f) => ({ ...f, [key]: event.target.value }));
   const subtotal = cart.reduce((sum, l) => sum + l.qty * (items.get(l.itemId)?.price || 0), 0);
@@ -571,13 +627,26 @@ function Checkout({ slug, refCode, store, items, cart, onPlaced }) {
         </fieldset>
       )}
 
+      <div className="checkout__cols"><div className="checkout__col">
       <fieldset className="group">
         <legend>Seus dados</legend>
+        {!editingContact && (
+          <div className="contact-summary">
+            <div>
+              <p><strong>{form.name}</strong> · {displayPhone(form.phone)}</p>
+              {mode === 'delivery' && <p>{fullAddress}{form.neighborhood ? ` · ${form.neighborhood}` : ''}</p>}
+            </div>
+            <button type="button" className="link" onClick={() => setEditingContact(true)}>Alterar</button>
+          </div>
+        )}
+        {/* Bairro com taxa fica sempre à vista: define o total */}
+        {editingContact && <>
         <label className="field">Nome<input type="text" required autoComplete="name" value={form.name} onChange={update('name')} /></label>
         <label className="field">WhatsApp com DDD
           <input type="tel" required autoComplete="tel" inputMode="tel" placeholder="(DDD) 99999-9999" value={form.phone} onChange={update('phone')} />
           <small>Os avisos do pedido chegam por aqui.</small>
         </label>
+        </>}
         {mode === 'delivery' && byNeighborhood && (
           <label className="field">Bairro
             <select required value={chosen ? form.neighborhood : ''} onChange={update('neighborhood')}>
@@ -589,7 +658,7 @@ function Checkout({ slug, refCode, store, items, cart, onPlaced }) {
             <small>Seu bairro não está na lista? Ainda não entregamos lá{store.pickup ? ', mas você pode retirar na loja' : ''}.</small>
           </label>
         )}
-        {mode === 'delivery' && (
+        {mode === 'delivery' && editingContact && (
           <>
             <div className="address-fields"><label className="field">Endereço
               <input
@@ -619,6 +688,7 @@ function Checkout({ slug, refCode, store, items, cart, onPlaced }) {
         )}
       </fieldset>
 
+      </div><div className="checkout__col">
       <fieldset className="group">
         <legend>Pagamento</legend>
         <div className="choice choice--stack">
@@ -653,6 +723,7 @@ function Checkout({ slug, refCode, store, items, cart, onPlaced }) {
         <h3>Confira os itens</h3>
         <ul>{cart.map(line => <li key={line.key}><span>{line.qty} × {items.get(line.itemId)?.name}{line.notes && <small>{line.notes}</small>}</span><strong className="num">{money(line.qty * (items.get(line.itemId)?.price || 0))}</strong></li>)}</ul>
       </section>
+      </div></div>
       {error && <p className="error" role="alert">{error}</p>}
       <div className="checkout__footer">
       <div className="totals num">

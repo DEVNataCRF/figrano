@@ -52,6 +52,9 @@ export default function Tracker({ id, suffix }) {
   );
   const current = steps.findIndex((s) => s.status === order.status);
   const link = whatsappLink(store.whatsapp, `Olá! Sobre o pedido #${order.number}`);
+  // Previsão: hora do pedido + preparo (+15 min de entrega), no horário de quem está vendo
+  const etaMinutes = store.prepMinutes > 0 ? store.prepMinutes + (order.mode === 'DELIVERY' ? 15 : 0) : 0;
+  const eta = etaMinutes && order.createdAt ? new Date(new Date(order.createdAt).getTime() + etaMinutes * 60000).toLocaleTimeString('pt-BR', { hour: '2-digit', minute: '2-digit' }) : '';
   const lines = order.items?.length ? order.items.map((i) => ({ name: i.name, qty: i.quantity, price: i.unitPrice, notes: i.notes })) : saved?.items || [];
 
   return (
@@ -61,7 +64,9 @@ export default function Tracker({ id, suffix }) {
         <h1>{order.status === 'CANCELED' ? 'Pedido cancelado' : `Pedido #${order.number}`}</h1>
         {order.status === 'AWAITING_PIX' && <p className="muted">Falta só o Pix: pague e mande o comprovante no WhatsApp {who.da}.</p>}
         {order.status === 'NEW' && <p className="muted">A loja vai confirmar em instantes. Você também recebe os avisos pelo WhatsApp.</p>}
-        {!finished && order.status !== 'NEW' && store.prepMinutes > 0 && <p className="muted">Preparo médio de {store.prepMinutes} min.</p>}
+        {!finished && order.status !== 'NEW' && order.status !== 'AWAITING_PIX' && eta && (
+          <p className="eta">{order.mode === 'DELIVERY' ? 'Previsão de chegada' : 'Pronto para retirar'}: <strong>por volta das {eta}</strong></p>
+        )}
       </header>
 
       {order.status === 'AWAITING_PIX' && order.pix && <PixBox pix={order.pix} number={order.number} />}
@@ -71,7 +76,10 @@ export default function Tracker({ id, suffix }) {
       ) : (
         <ol className="steps" aria-label="Andamento do pedido">
           {steps.map((step, index) => (
-            <li key={step.status} data-state={index < current ? 'done' : index === current ? 'now' : 'next'}>{step.label}</li>
+            <li key={step.status} data-state={index < current ? 'done' : index === current ? 'now' : 'next'} aria-current={index === current ? 'step' : undefined}>
+              <span className="steps__dot" aria-hidden="true">{index < current && <svg viewBox="0 0 16 16" width="12" height="12"><path d="M3.5 8.5l3 3 6-6.5" fill="none" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round" /></svg>}</span>
+              <span>{step.label}</span>
+            </li>
           ))}
         </ol>
       )}
