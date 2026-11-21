@@ -1,9 +1,11 @@
 'use client';
 
 import { useEffect, useMemo, useRef, useState } from 'react';
+import { AnimatePresence, MotionConfig, motion, useIsPresent, useReducedMotion } from 'motion/react';
 import { money, whatsappLink } from '../lib/format.js';
 import { PAYMENT_LABELS, placeOrder } from '../lib/api.js';
 import StorePhoto from './StorePhoto.js';
+import { formatDeliveryAddress, restoreDeliveryContact } from '../lib/delivery-address.js';
 import { contactOf, streetsOf } from '../lib/store.js';
 
 
@@ -30,6 +32,7 @@ function fromApi(data) {
       minOrder: Number(c.minOrder) || 0,
       prepMinutes: Number(c.prepMinutes) || 0,
       payments: c.payments,
+      cardBrands: c.cardBrands ?? { credit: ['VISA', 'ELO', 'MASTERCARD'], debit: ['VISA', 'ELO', 'MASTERCARD'] },
       delivery: c.acceptsDelivery,
       pickup: c.acceptsPickup,
       pixOnline: Boolean(c.pixOnline?.enabled),
@@ -84,6 +87,8 @@ export default function OrderApp({ menu: data, refCode }) {
   const [sheet, setSheet] = useState(null); // 'bag' | 'checkout' | null
   const [showInfo, setShowInfo] = useState(false);
   const [activeCat, setActiveCat] = useState(menu[0]?.id || '');
+  const [overlayMounted, setOverlayMounted] = useState(false);
+  useEffect(() => { if (product || sheet) setOverlayMounted(true); }, [product, sheet]);
 
   useEffect(() => {
     const saved = readStorage(cartKey(slug), []);
@@ -107,9 +112,9 @@ export default function OrderApp({ menu: data, refCode }) {
 
   // Trava a rolagem do fundo enquanto uma janela está aberta.
   useEffect(() => {
-    document.body.style.overflow = product || sheet ? 'hidden' : '';
+    document.body.style.overflow = product || sheet || overlayMounted ? 'hidden' : '';
     return () => { document.body.style.overflow = ''; };
-  }, [product, sheet]);
+  }, [product, sheet, overlayMounted]);
 
   const visibleMenu = useMemo(() => {
     const q = normalize(query.trim());
@@ -139,8 +144,8 @@ export default function OrderApp({ menu: data, refCode }) {
   ].filter(Boolean);
 
   return (
-    <div className="shop">
-      <header className="hero">
+    <MotionConfig reducedMotion="user"><div className="shop">
+      <header className="hero" inert={product || sheet || overlayMounted ? true : undefined}>
         <div className="hero__cover" style={store.cover ? { backgroundImage: `url(${store.cover})` } : undefined} />
         <div className="hero__body">
           <div className="hero__logo">
@@ -180,7 +185,7 @@ export default function OrderApp({ menu: data, refCode }) {
         </p>}
       </header>
 
-      <div className="layout">
+      <div className="layout" inert={product || sheet || overlayMounted ? true : undefined}>
         <main className="menu">
           <div className="toolbar">
             <label className="search">
@@ -236,7 +241,7 @@ export default function OrderApp({ menu: data, refCode }) {
       </div>
 
       {count > 0 && (
-        <div className="bagbar">
+        <div className="bagbar" inert={product || sheet || overlayMounted ? true : undefined}>
           <button className="btn btn--primary btn--block" onClick={() => setSheet('bag')}>
             <span className="bagbar__count num">{count}</span>
             <span>Ver sacola</span>
@@ -245,24 +250,22 @@ export default function OrderApp({ menu: data, refCode }) {
         </div>
       )}
 
-      {product && (
+      <AnimatePresence mode="wait" initial={false} onExitComplete={() => { if (!product && !sheet) setOverlayMounted(false); }}>
+      {product ? (
         <ProductSheet
+          key={`product-${product.id}`}
           item={product}
           canOrder={canOrder}
           onClose={() => setProduct(null)}
           onAdd={(qty, notes) => { addToCart(product.id, qty, notes); setProduct(null); }}
         />
-      )}
-
-      {sheet === 'bag' && (
-        <Sheet title="Sua sacola" onClose={() => setSheet(null)}>
+      ) : sheet === 'bag' ? (
+        <Sheet key="bag" title="Sua sacola" onClose={() => setSheet(null)}>
           <Bag cart={cart} items={items} setQty={setQty} subtotal={subtotal} store={store} canOrder={canOrder}
             onCheckout={() => setSheet('checkout')} bare />
         </Sheet>
-      )}
-
-      {sheet === 'checkout' && (
-        <Sheet title="Finalizar pedido" onClose={() => setSheet(null)}>
+      ) : sheet === 'checkout' ? (
+        <Sheet key="checkout" title="Finalizar pedido" onClose={() => setSheet(null)}>
           <Checkout
             slug={slug}
             refCode={refCode}
@@ -276,18 +279,24 @@ export default function OrderApp({ menu: data, refCode }) {
             }}
           />
         </Sheet>
-      )}
-    </div>
+      ) : null}
+      </AnimatePresence>
+    </div></MotionConfig>
   );
 }
 
 function useSheetFocus(onClose, focusKey) {
   const ref = useRef(null);
+  // Quem abriu a janela, lido antes de ela pegar o foco (no React de desenvolvimento o efeito
+  // roda duas vezes e, na segunda, o foco já estaria dentro da própria janela).
+  const opener = useRef(undefined);
+  if (opener.current === undefined && typeof document !== 'undefined') opener.current = document.activeElement;
   useEffect(() => {
-    const previous = document.activeElement;
     const panel = ref.current;
+    const previous = panel?.contains(document.activeElement) ? opener.current : document.activeElement;
     panel?.focus();
     const onKey = (event) => {
+      if (panel?.closest('[inert]')) return;
       if (event.key === 'Escape') { event.preventDefault(); onClose(); }
       if (event.key !== 'Tab' || !panel) return;
       const fields = [...panel.querySelectorAll('button:not(:disabled), input:not(:disabled), select:not(:disabled), textarea:not(:disabled), a[href]')].filter(el => el.getClientRects().length);
@@ -298,16 +307,29 @@ function useSheetFocus(onClose, focusKey) {
       else if (!event.shiftKey && document.activeElement === last) { event.preventDefault(); first.focus(); }
     };
     window.addEventListener('keydown', onKey);
-    return () => { window.removeEventListener('keydown', onKey); if (previous?.isConnected) previous.focus(); };
+    return () => {
+      window.removeEventListener('keydown', onKey);
+      // Devolve o foco a quem abriu a janela. Durante a animação de saída o fundo ainda está
+      // `inert` e o foco não pega: espera liberar (até ~1 s) em vez de deixar o foco perdido.
+      let tries = 0;
+      const restore = () => {
+        if (document.querySelector('[role="dialog"]:not([aria-hidden="true"])') || !previous?.isConnected) return;
+        if (previous.closest('[inert]') && tries++ < 60) { requestAnimationFrame(restore); return; }
+        previous.focus();
+      };
+      requestAnimationFrame(restore);
+    };
   }, [focusKey]); // Troca de etapa move o foco; digitação mantém a posição atual.
   return ref;
 }
 
 function Sheet({ title, onClose, children }) {
   const panel = useSheetFocus(onClose, title);
+  const present = useIsPresent();
+  const reduced = useReducedMotion();
   return (
-    <div className="sheet" onClick={(event) => { if (event.target === event.currentTarget) onClose(); }}>
-      <div ref={panel} tabIndex={-1} className="sheet__panel" role="dialog" aria-modal="true" aria-label={title}>
+    <motion.div className="sheet" inert={!present ? true : undefined} initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }} transition={{ duration: reduced ? 0 : 0.16 }} onClick={(event) => { if (event.target === event.currentTarget) onClose(); }}>
+      <motion.div ref={panel} tabIndex={-1} className="sheet__panel" role="dialog" aria-modal="true" aria-hidden={!present || undefined} aria-label={title} initial={{ y: reduced ? 0 : 16, opacity: 0 }} animate={{ y: 0, opacity: 1 }} exit={{ y: reduced ? 0 : 8, opacity: 0 }} transition={{ duration: reduced ? 0 : 0.2, ease: 'easeOut' }}>
         <div className="sheet__head">
           <h2>{title}</h2>
           <button type="button" className="icon-btn" onClick={onClose} aria-label="Fechar">
@@ -315,8 +337,8 @@ function Sheet({ title, onClose, children }) {
           </button>
         </div>
         {children}
-      </div>
-    </div>
+      </motion.div>
+    </motion.div>
   );
 }
 
@@ -324,9 +346,11 @@ function ProductSheet({ item, canOrder, onClose, onAdd }) {
   const [qty, setQty] = useState(1);
   const [notes, setNotes] = useState('');
   const panel = useSheetFocus(onClose, item.id);
+  const present = useIsPresent();
+  const reduced = useReducedMotion();
   return (
-    <div className="sheet" onClick={(event) => { if (event.target === event.currentTarget) onClose(); }}>
-      <div ref={panel} tabIndex={-1} className="sheet__panel sheet__panel--product" role="dialog" aria-modal="true" aria-label={item.name}>
+    <motion.div className="sheet" inert={!present ? true : undefined} initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }} transition={{ duration: reduced ? 0 : 0.16 }} onClick={(event) => { if (event.target === event.currentTarget) onClose(); }}>
+      <motion.div ref={panel} tabIndex={-1} className="sheet__panel sheet__panel--product" role="dialog" aria-modal="true" aria-hidden={!present || undefined} aria-label={item.name} initial={{ y: reduced ? 0 : 16, opacity: 0 }} animate={{ y: 0, opacity: 1 }} exit={{ y: reduced ? 0 : 8, opacity: 0 }} transition={{ duration: reduced ? 0 : 0.2, ease: 'easeOut' }}>
         <button type="button" className="icon-btn icon-btn--float" onClick={onClose} aria-label="Fechar">
           <svg viewBox="0 0 20 20" width="20" height="20" aria-hidden="true"><path d="M5 5l10 10M15 5L5 15" stroke="currentColor" strokeWidth="2" strokeLinecap="round" /></svg>
         </button>
@@ -344,7 +368,7 @@ function ProductSheet({ item, canOrder, onClose, onAdd }) {
           <div className="pd__foot">
             <div className="stepper">
               <button type="button" onClick={() => setQty((q) => Math.max(1, q - 1))} aria-label="Menos um" disabled={qty <= 1}>−</button>
-              <span className="num" aria-live="polite">{qty}</span>
+              <AnimatedQuantity value={qty} />
               <button type="button" onClick={() => setQty((q) => Math.min(99, q + 1))} aria-label="Mais um">+</button>
             </div>
             <button type="button" className="btn btn--primary pd__add" onClick={() => onAdd(qty, notes)}>
@@ -354,8 +378,8 @@ function ProductSheet({ item, canOrder, onClose, onAdd }) {
         ) : (
           <div className="pd__foot"><p className="muted">A loja não está aceitando pedidos agora.</p></div>
         )}
-      </div>
-    </div>
+      </motion.div>
+    </motion.div>
   );
 }
 
@@ -385,7 +409,7 @@ function Bag({ cart, items, setQty, subtotal, store, canOrder, onCheckout, bare 
               </div>
               <div className="stepper stepper--sm">
                 <button type="button" onClick={() => setQty(line.key, line.qty - 1)} aria-label={`Tirar um ${item.name}`}>−</button>
-                <span className="num">{line.qty}</span>
+                <AnimatedQuantity value={line.qty} />
                 <button type="button" onClick={() => setQty(line.key, Math.min(99, line.qty + 1))} aria-label={`Mais um ${item.name}`}>+</button>
               </div>
             </li>
@@ -405,6 +429,11 @@ function Bag({ cart, items, setQty, subtotal, store, canOrder, onCheckout, bare 
 }
 
 /** "Entrega R$ 6,00", "Entrega de R$ 5,00 a R$ 8,00" (por bairro) ou "Entrega grátis" */
+function AnimatedQuantity({ value }) {
+  const reduced = useReducedMotion();
+  return <motion.span key={value} className="num" aria-live="polite" initial={{ opacity: reduced ? 1 : 0.4, y: reduced ? 0 : -2 }} animate={{ opacity: 1, y: 0 }} transition={{ duration: reduced ? 0 : 0.12 }}>{value}</motion.span>;
+}
+
 function feeLabel(store) {
   const fees = store.neighborhoods.map((n) => n.fee);
   if (fees.length) {
@@ -416,8 +445,9 @@ function feeLabel(store) {
 }
 
 function Checkout({ slug, refCode, store, items, cart, onPlaced }) {
+  const reduced = useReducedMotion();
   const [mode, setMode] = useState(store.delivery ? 'delivery' : 'pickup');
-  const [form, setForm] = useState({ name: '', phone: '', address: '', complement: '', neighborhood: '' });
+  const [form, setForm] = useState(() => restoreDeliveryContact(null));
   const byNeighborhood = store.neighborhoods.length > 0;
   const who = contactOf(store.owner);
   const streets = useMemo(() => streetsOf(store.city), [store.city]);
@@ -429,7 +459,7 @@ function Checkout({ slug, refCode, store, items, cart, onPlaced }) {
   const [error, setError] = useState('');
   const [sending, setSending] = useState(false);
 
-  useEffect(() => { setForm((f) => ({ ...f, ...readStorage(`sabores:delivery:customer:${slug}`, {}) })); }, [slug]);
+  useEffect(() => { setForm(restoreDeliveryContact(readStorage(`sabores:delivery:customer:${slug}`, {}))); }, [slug]);
 
   const update = (key) => (event) => setForm((f) => ({ ...f, [key]: event.target.value }));
   const subtotal = cart.reduce((sum, l) => sum + l.qty * (items.get(l.itemId)?.price || 0), 0);
@@ -437,15 +467,21 @@ function Checkout({ slug, refCode, store, items, cart, onPlaced }) {
   const fee = mode !== 'delivery' ? 0 : byNeighborhood ? chosen?.fee ?? 0 : store.deliveryFee;
   const total = subtotal + fee;
   const cash = payment === 'CASH';
+  const cardKind = payment === 'CREDIT_CARD' ? 'credit' : payment === 'DEBIT_CARD' ? 'debit' : null;
+  const cardBrands = cardKind ? (store.cardBrands[cardKind] || []).filter(brand => ['VISA', 'ELO', 'MASTERCARD'].includes(brand)) : [];
   // Rua e número + complemento/referência, como o entregador lê na comanda
-  const fullAddress = [form.address.trim(), form.complement.trim()].filter(Boolean).join(' - ');
+  const fullAddress = formatDeliveryAddress(form);
+  const sendLock = useRef(false);
 
   async function submit(event) {
     event.preventDefault();
+    if (sendLock.current) return;
     setError('');
+    if (mode === 'delivery' && !form.noNumber && !form.number.trim()) { setError('Informe o número do endereço ou marque “Sem número”.'); return; }
+    sendLock.current = true;
     setSending(true);
     try {
-      writeStorage(`sabores:delivery:customer:${slug}`, { name: form.name, phone: form.phone, address: form.address, complement: form.complement, neighborhood: form.neighborhood });
+      writeStorage(`sabores:delivery:customer:${slug}`, { ...form, addressVersion: 2 });
       const change = cash && changeFor.trim() ? Number(changeFor.replace(/[^\d,.]/g, '').replace(',', '.')) : null;
       const order = await placeOrder({
         customer: { name: form.name.trim(), phoneWhatsapp: form.phone },
@@ -467,6 +503,7 @@ function Checkout({ slug, refCode, store, items, cart, onPlaced }) {
       });
       onPlaced(order, form.phone.replace(/\D/g, '').slice(-4));
     } catch (err) {
+      sendLock.current = false;
       setError(err.message);
       setSending(false);
     }
@@ -504,14 +541,15 @@ function Checkout({ slug, refCode, store, items, cart, onPlaced }) {
         )}
         {mode === 'delivery' && (
           <>
-            <label className="field">Rua e número
+            <div className="address-fields"><label className="field">Endereço
               <input
                 type="text"
                 required
                 // Sugere as ruas da cidade da loja enquanto digita (base do OpenStreetMap)
                 list={streets.length ? 'ruas-da-cidade' : undefined}
-                autoComplete="street-address"
-                placeholder={byNeighborhood ? 'Ex.: Rua Principal, 120' : 'Ex.: Rua Principal, 120, Centro'}
+                autoComplete="address-line1"
+                maxLength={300}
+                placeholder="Rua, avenida ou estrada"
                 value={form.address}
                 onChange={update('address')}
               />
@@ -521,8 +559,11 @@ function Checkout({ slug, refCode, store, items, cart, onPlaced }) {
                 </datalist>
               )}
             </label>
+            <label className="field">Número<input type="text" required={!form.noNumber} disabled={form.noNumber} maxLength={20} autoComplete="off" placeholder={form.noNumber ? 'Sem número' : 'Ex.: 120A'} value={form.noNumber ? '' : form.number} onChange={update('number')} /></label></div>
+            <label className="address-no-number"><input type="checkbox" checked={form.noNumber} onChange={event => setForm(f => ({ ...f, noNumber: event.target.checked }))} />Sem número</label>
+            {form.legacyAddress && !form.number && !form.noNumber && <p className="hint">Seu endereço salvo veio em um único campo. Confira e separe a rua e o número antes de enviar.</p>}
             <label className="field">Complemento ou ponto de referência <small>(opcional)</small>
-              <input type="text" placeholder="Ex.: casa azul, apto 2, perto da praça" value={form.complement} onChange={update('complement')} />
+              <input type="text" maxLength={140} autoComplete="address-line2" placeholder="Ex.: casa azul, apto 2, perto da praça" value={form.complement} onChange={update('complement')} />
             </label>
           </>
         )}
@@ -538,6 +579,9 @@ function Checkout({ slug, refCode, store, items, cart, onPlaced }) {
             </label>
           ))}
         </div>
+        <AnimatePresence initial={false} mode="wait">{cardKind && <motion.div key={cardKind} className="card-brands-reveal" initial={{ height: 0, opacity: 0 }} animate={{ height: 'auto', opacity: 1 }} exit={{ height: 0, opacity: 0 }} transition={{ duration: reduced ? 0 : 0.18 }}>
+          <div className="card-brands"><p>Bandeiras aceitas no {cardKind === 'credit' ? 'crédito' : 'débito'}</p>{cardBrands.length > 0 ? <ul aria-label={`Bandeiras aceitas no ${cardKind === 'credit' ? 'crédito' : 'débito'}`}>{cardBrands.map(brand => <li key={brand}><img src={`/pagamentos/${brand.toLowerCase()}.svg`} alt="" width="58" height="36" /><span>{({ VISA: 'Visa', ELO: 'Elo', MASTERCARD: 'Mastercard' })[brand]}</span></li>)}</ul> : <p className="muted">Consulte as bandeiras com a loja.</p>}<small>Pagamento na entrega ou retirada.</small></div>
+        </motion.div>}</AnimatePresence>
         {payment === 'PIX' && store.pixOnline && (
           <p className="hint">
             Depois de enviar, aparece o Pix copia e cola com o valor. Seu pedido só vai para a cozinha quando {who.a}

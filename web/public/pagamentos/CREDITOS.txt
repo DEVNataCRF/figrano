@@ -1,0 +1,3 @@
+SVG Credit Card & Payment Icons — Aaron Fagan
+https://github.com/aaronfagan/svg-credit-card-payment-icons
+Apache-2.0. Ícones flat-rounded originais, sem alterações.

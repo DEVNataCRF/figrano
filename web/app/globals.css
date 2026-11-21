@@ -280,3 +280,24 @@ a { color: var(--accent); }
 .checkout__footer { position: sticky; bottom: -1px; z-index: 2; display: grid; gap: 16px; padding: 16px 0 max(4px, env(safe-area-inset-bottom)); background: var(--surface); border-top: 1px solid var(--line); }
 .checkout__footer .totals { margin: 0; padding: 0; border: 0; }
 @media (max-width: 420px) { .hero__logo { width: 72px; height: 72px; margin-top: -28px; } .hero__text h1 { font-size: 26px; } }
+
+/* Interações discretas; os valores e o fluxo do pedido continuam os mesmos. */
+.address-fields { display: grid; grid-template-columns: minmax(0, 1fr) 104px; gap: 12px; }
+.address-fields .field { min-width: 0; }
+.address-fields input { width: 100%; min-width: 0; }
+.address-no-number { display: flex; align-items: center; gap: 10px; min-height: 44px; font-size: 14px; cursor: pointer; }
+.address-no-number input { width: 18px; height: 18px; accent-color: var(--accent); }
+.field input:disabled { background: var(--bar); color: var(--muted); }
+.card-brands-reveal { overflow: hidden; }
+.card-brands { display: grid; gap: 12px; padding-top: 16px; }
+.card-brands > p { font-size: 14px; font-weight: 700; }
+.card-brands ul { display: flex; flex-wrap: wrap; gap: 8px; margin: 0; padding: 0; list-style: none; }
+.card-brands li { display: grid; flex: 1 0 84px; justify-items: center; gap: 5px; padding: 10px 6px; border: 1px solid var(--line); border-radius: var(--r-control); background: var(--surface); font-size: 14px; font-weight: 700; }
+.card-brands img { display: block; width: 58px; height: 36px; object-fit: contain; }
+.card-brands small { color: var(--muted); font-size: 13px; }
+.btn, .stepper button, .icon-btn, .choice label { transition: background-color 160ms ease, border-color 160ms ease, box-shadow 160ms ease, transform 160ms ease; }
+.btn:not(:disabled):active, .stepper button:not(:disabled):active, .icon-btn:active { transform: translateY(1px); }
+.choice label:has(input:checked) { box-shadow: 0 0 0 1px var(--accent); }
+@media (prefers-reduced-motion: reduce) {
+  .btn, .stepper button, .icon-btn, .choice label { transition: none; transform: none !important; }
+}

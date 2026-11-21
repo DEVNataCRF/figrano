@@ -98,6 +98,14 @@ Configurações públicas no ambiente de build do site:
 
 `npm run build` em `web` gera o site estático com as fotos de `web/public`. Para uma prévia separada, `FIGRANO_NEXT_DIST_DIR=.next-design` gera o pacote nessa pasta em vez de `out`; a prévia deve servir essa pasta, não uma cópia antiga de `out`. Variáveis públicas devem ser configuradas para cada instalação antes do build; não são campos secretos.
 
+## Bandeiras, endereço e movimento no delivery
+
+O catálogo público pode retornar `config.cardBrands.credit` e `config.cardBrands.debit`. Valores reconhecidos: `VISA`, `ELO`, `MASTERCARD`. A lista inicial confirmada é a mesma para as duas formas; o desktop permite ajustá-las separadamente. Bandeiras apenas identificam o pagamento na entrega/retirada e não acrescentam coleta de dados de cartão.
+
+Os contatos novos salvos no navegador usam `addressVersion: 2`, com `address`, `number`, `noNumber` e `complement`. A API continua recebendo o endereço completo. O leitor de endereços antigos conserva campos ambíguos para revisão. Testes específicos podem ser executados em `web` com `node --test lib/delivery-address.test.js`.
+
+As transições usam a biblioteca `motion`, incluída no lockfile do site, e respeitam movimento reduzido. Logos de Visa, Elo e Mastercard são servidos localmente em `web/public/pagamentos`; `LICENSE.txt` e `CREDITOS.txt` acompanham os SVG originais de Aaron Fagan.
+
 ## Avisos
 
 - A integração usa a biblioteca aberta `@wppconnect/wa-js` para automatizar o WhatsApp Web. Isso não é permitido pelos termos do WhatsApp e o número pode ser banido. A alternativa oficial é a API do WhatsApp Business.
