@@ -78,31 +78,75 @@ const receiveQueue = new SerialQueue();
 
 // ------------------------------------------------------------- chave de API
 
-/** Segredos (chave de API, token da loja) ficam criptografados pelo Windows. */
-function decryptSecret(stored) {
+/**
+ * Segredos (chave de API, token da loja, sessão do painel) ficam criptografados pelo Windows.
+ * O Electron trocou a criptografia por versões assíncronas: os segredos são decifrados uma vez
+ * na abertura (warmSecrets) e ficam em memória; gravar atualiza a memória na hora e salva o
+ * texto cifrado assim que a criptografia termina. Assim o resto do app continua lendo na hora.
+ */
+const secretPlain = new Map(); // texto cifrado salvo → texto aberto (já decifrado)
+
+async function decryptSecretAsync(stored) {
   if (!stored) return '';
+  if (stored.startsWith('plain:')) return stored.slice(6);
   try {
-    if (stored.startsWith('plain:')) return stored.slice(6);
-    return safeStorage.decryptString(Buffer.from(stored, 'base64'));
+    return (await safeStorage.decryptStringAsync(Buffer.from(stored, 'base64'))).result || '';
   } catch {
     return '';
   }
 }
 
-function encryptSecret(value) {
-  const clean = String(value || '').trim();
+async function encryptSecretAsync(clean) {
   if (!clean) return '';
-  return safeStorage.isEncryptionAvailable()
-    ? safeStorage.encryptString(clean).toString('base64')
+  return (await safeStorage.isAsyncEncryptionAvailable())
+    ? (await safeStorage.encryptStringAsync(clean)).toString('base64')
     : `plain:${clean}`;
 }
 
-const readApiKey = () => decryptSecret(store.settings.ai.apiKeyEncrypted);
-const writeApiKey = (key) => store.updateSettings('ai', { apiKeyEncrypted: encryptSecret(key) });
-const readPlatformToken = () => decryptSecret(store.settings.platform.tokenEncrypted);
-const writePlatformToken = (token) => store.updateSettings('platform', { tokenEncrypted: encryptSecret(token) });
-const readPlatformRefresh = () => decryptSecret(store.settings.platform.refreshEncrypted);
-const writePlatformRefresh = (token) => store.updateSettings('platform', { refreshEncrypted: encryptSecret(token) });
+/** Lê o segredo já decifrado (warmSecrets na abertura ou gravado nesta sessão). */
+function decryptSecret(stored) {
+  if (!stored) return '';
+  if (stored.startsWith('plain:')) return stored.slice(6);
+  return secretPlain.get(stored) ?? '';
+}
+
+/**
+ * Grava um segredo: quem lê já recebe o valor novo; o texto cifrado é salvo em seguida.
+ * `save(cipher)` grava no lugar certo das configurações. Gravações seguidas: vale a última.
+ */
+const secretWrites = new Map();
+function storeSecret(slot, value, save) {
+  const clean = String(value || '').trim();
+  const pendingKey = `pending:${slot}`;
+  secretPlain.set(pendingKey, clean);
+  const ticket = (secretWrites.get(slot) || 0) + 1;
+  secretWrites.set(slot, ticket);
+  return encryptSecretAsync(clean).then((cipher) => {
+    if (secretWrites.get(slot) !== ticket) return; // já veio outro valor depois
+    if (cipher) secretPlain.set(cipher, clean);
+    secretPlain.delete(pendingKey);
+    save(cipher);
+  }).catch((error) => console.error('[figrano] não consegui guardar um segredo:', error.message));
+}
+const readSlot = (slot, stored) => (secretPlain.has(`pending:${slot}`) ? secretPlain.get(`pending:${slot}`) : decryptSecret(stored));
+
+/** Decifra de uma vez tudo o que está salvo (chamado antes de ligar a plataforma e o painel). */
+async function warmSecrets() {
+  const stored = [
+    store.settings.ai.apiKeyEncrypted,
+    store.settings.platform.tokenEncrypted,
+    store.settings.platform.refreshEncrypted,
+    ...Object.values(store.settings.platform.vault || {}),
+  ].filter((value) => value && !value.startsWith('plain:'));
+  await Promise.all(stored.map(async (value) => secretPlain.set(value, await decryptSecretAsync(value))));
+}
+
+const readApiKey = () => readSlot('ai', store.settings.ai.apiKeyEncrypted);
+const writeApiKey = (key) => storeSecret('ai', key, (cipher) => store.updateSettings('ai', { apiKeyEncrypted: cipher }));
+const readPlatformToken = () => readSlot('token', store.settings.platform.tokenEncrypted);
+const writePlatformToken = (token) => storeSecret('token', token, (cipher) => store.updateSettings('platform', { tokenEncrypted: cipher }));
+const readPlatformRefresh = () => readSlot('refresh', store.settings.platform.refreshEncrypted);
+const writePlatformRefresh = (token) => storeSecret('refresh', token, (cipher) => store.updateSettings('platform', { refreshEncrypted: cipher }));
 
 /**
  * Cofre do painel embutido: guarda a sessão do painel criptografada pelo Windows (safeStorage),
@@ -524,17 +568,23 @@ const api = {
   // Login: o mesmo do painel (o painel faz login e passa o token para o app)
   'session:adopt': (session) => platform.adoptSession(session),
   'secure:get': (key) => {
-    const stored = vaultData()[vaultKey(key)];
-    return stored ? decryptSecret(stored) || null : null;
+    const name = vaultKey(key);
+    const value = readSlot(`vault:${name}`, vaultData()[name]);
+    return value || null;
   },
   'secure:set': (key, value) => {
     const text = String(value || '');
     if (text.length > 4096) throw new Error('Valor grande demais para o cofre.');
-    store.updateSettings('platform', { vault: { ...vaultData(), [vaultKey(key)]: encryptSecret(text) } });
+    const name = vaultKey(key);
+    return storeSecret(`vault:${name}`, text, (cipher) => store.updateSettings('platform', { vault: { ...vaultData(), [name]: cipher } }));
   },
   'secure:delete': (key) => {
+    const name = vaultKey(key);
+    // Cancela uma gravação ainda em andamento e esquece o valor em memória
+    secretWrites.set(`vault:${name}`, (secretWrites.get(`vault:${name}`) || 0) + 1);
+    secretPlain.delete(`pending:vault:${name}`);
     const next = vaultData();
-    delete next[vaultKey(key)];
+    delete next[name];
     store.updateSettings('platform', { vault: next });
   },
   'session:logout': () => platform.logout(),
@@ -831,12 +881,14 @@ if (!app.requestSingleInstanceLock()) {
 
   // Alertas sonoros do painel tocam sem esperar um clique (política de autoplay)
   app.commandLine.appendSwitch('autoplay-policy', 'no-user-gesture-required');
-  app.whenReady().then(() => {
+  app.whenReady().then(async () => {
     app.setAppUserModelId('br.figrano.app');
     Menu.setApplicationMenu(null);
 
     store = new Store(path.join(app.getPath('userData'), 'figrano-dados.json'));
     images = new ImageStore(path.join(app.getPath('userData'), 'fotos'), nativeImage);
+    // Segredos decifrados antes de ligar a plataforma e o painel (criptografia assíncrona do Electron)
+    await warmSecrets();
     protocol.handle('app', (request) => {
       const dir = panelDir();
       const { host, pathname } = new URL(request.url);

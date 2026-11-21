@@ -357,6 +357,7 @@ export default function OrderApp({ menu: data, refCode }) {
             <dl className="site-footer__hours">{store.hours.map((h) => <div key={h.name}><dt>{h.name}</dt><dd>{h.text}</dd></div>)}</dl>
           </div>
         </div>
+        <p className="site-footer__legal"><a href="/privacidade/">Privacidade e seus dados</a></p>
       </footer>
 
       <div className="toast-area" role="status" aria-live="polite">
@@ -787,6 +788,7 @@ function Checkout({ slug, refCode, store, items, cart, onPlaced, bairro = '', on
         {mode === 'delivery' && <div><span>Entrega</span><span>{byNeighborhood && !chosen ? 'escolha o bairro' : fee ? money(fee) : 'Grátis'}</span></div>}
         <div className="grand"><span>Total</span><span>{mode === 'delivery' && byNeighborhood && !chosen ? 'Escolha o bairro' : money(total)}</span></div>
       </div>
+      <p className="checkout__legal">Seus dados servem só para este pedido e os avisos dele. <a href="/privacidade/" target="_blank" rel="noreferrer">Privacidade</a></p>
       <button className="btn btn--primary btn--block" disabled={sending || cart.length === 0}>
         {sending ? 'Enviando…' : mode === 'delivery' && byNeighborhood && !chosen ? 'Enviar pedido' : `Enviar pedido · ${money(total)}`}
       </button>
