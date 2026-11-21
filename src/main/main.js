@@ -394,6 +394,17 @@ async function onPlatformEvent(event) {
     return;
   }
 
+  if (event.type === 'order_delay') {
+    // A loja avisou atraso no painel: o cliente fica sabendo na hora, pelo WhatsApp
+    if (canMessage) {
+      const chatId = await chatOf(order);
+      const link = platform.trackingLinkFor(order);
+      if (chatId) sendToChat(chatId, [`Seu pedido #${order.number} vai atrasar um pouquinho: mais uns ${event.added} minutos. Desculpe pela espera!${link ? `\n\nA previsão atualizada fica aqui: ${link}` : ''}`], { respectsPause: false });
+    }
+    push('orders');
+    return;
+  }
+
   if (event.type === 'order_status') {
     const link = platform.trackingLinkFor(order);
     const text = event.previous === 'AWAITING_PIX' && order.status === 'new'
@@ -467,7 +478,8 @@ const api = {
   'settings:update': (section, patch) => {
     if (!['store', 'bot', 'app'].includes(section)) throw new Error('Seção inválida.');
     store.updateSettings(section, patch);
-    if (section === 'app' && app.isPackaged) app.setLoginItemSettings({ openAtLogin: Boolean(patch.autoStart) });
+    // Só mexe no "abrir com o Windows" quando esse campo veio (salvar a impressora não desliga)
+    if (section === 'app' && app.isPackaged && 'autoStart' in patch) app.setLoginItemSettings({ openAtLogin: Boolean(patch.autoStart) });
   },
   'ai:configure': ({ enabled, apiKey, provider, ollamaUrl, ollamaModel }) => {
     if (apiKey !== undefined) writeApiKey(apiKey);
@@ -539,6 +551,13 @@ const api = {
   },
   // Comanda do pedido (o painel manda o pedido como veio da API)
   'orders:print': (apiOrder) => printOrder(platform.toLocal(apiOrder)),
+  'orders:printTest': () => printOrder({
+    number: 0, mode: 'delivery', createdAt: Date.now(), customer: { name: 'Teste de impressão', phone: '5528999990000' },
+    items: [{ name: 'Coxinha (teste)', qty: 2, price: 3.5, notes: 'comanda de teste' }],
+    address: 'Rua de Teste, 100 - perto da praça', neighborhood: 'Centro', paymentMethod: 'CASH', payment: 'Dinheiro',
+    changeFor: 10, subtotal: 7, fee: 0, total: 7, notes: '',
+  }),
+  'printers:list': async () => (await win.webContents.getPrintersAsync()).map((p) => ({ name: p.name, displayName: p.displayName, isDefault: p.isDefault })),
 
   'handoffs:open': async (id) => {
     const handoff = store.handoffs.find((h) => h.id === id);
@@ -621,8 +640,17 @@ async function printOrder(order) {
   }
   const printer = new BrowserWindow({ show: false, webPreferences: { sandbox: true, javascript: false } });
   printer.loadURL(`data:text/html;charset=utf-8,${encodeURIComponent(receiptHtml(order, info, qr))}`);
-  printer.webContents.once('did-finish-load', () => {
-    printer.webContents.print({ silent: false, printBackground: false }, () => printer.destroy());
+  // Com impressora escolhida em Ajustes, sai direto (sem a janela do Windows)
+  const deviceName = store.settings.app?.printerName || '';
+  await new Promise((resolve, reject) => {
+    printer.webContents.once('did-finish-load', () => {
+      printer.webContents.print({ silent: Boolean(deviceName), deviceName: deviceName || undefined, printBackground: false }, (ok, reason) => {
+        printer.destroy();
+        // Fechar a janela de imprimir não é erro; impressora escolhida que falhou é
+        if (!ok && deviceName) reject(new Error(`Não consegui imprimir na impressora "${deviceName}" (${reason || 'sem resposta'}). Confira se ela está ligada.`));
+        else resolve();
+      });
+    });
   });
 }
 

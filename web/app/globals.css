@@ -427,3 +427,30 @@ a { color: var(--accent); }
 .steps li[data-state="now"] .steps__dot { border-color: var(--accent); background: var(--accent-soft); animation: etapa-atual 1.6s ease-in-out infinite; }
 @keyframes etapa-atual { 0%, 100% { box-shadow: 0 0 0 0 rgb(202 4 1 / 0.35); } 50% { box-shadow: 0 0 0 6px rgb(202 4 1 / 0); } }
 @media (prefers-reduced-motion: reduce) { .steps li[data-state="now"] .steps__dot { animation: none; } }
+
+/* ------------------------------------------- informações do produto */
+.product__unit { font-size: 13px; font-weight: 700; color: var(--ink); opacity: 0.75; }
+.pd__unit { font-size: 14px; font-weight: 600; color: var(--muted); }
+.pd__facts { display: grid; gap: var(--s2); margin: var(--s3) 0; padding: var(--s3); border-radius: var(--r-control); background: var(--bar); font-size: 14px; }
+.pd__facts div { display: grid; grid-template-columns: 96px 1fr; gap: var(--s2); }
+.pd__facts dt { font-weight: 800; }
+.pd__facts dd { margin: 0; }
+.pd__allergens dt::before { content: "⚠ "; }
+
+/* ------------------------------------- bairro antecipado e último pedido */
+.bairro-picker { display: grid; gap: var(--s2); margin: var(--s3) var(--s4) 0; padding: var(--s3) var(--s4); border: 1px solid var(--line); border-radius: var(--r-card); background: var(--surface); font-size: 14px; font-weight: 700; }
+.bairro-picker select { min-height: 44px; padding: 0 var(--s3); border: 1px solid var(--line); border-radius: var(--r-control); background: var(--bg); font: inherit; font-weight: 600; }
+.bairro-picker small { color: var(--warn); font-weight: 600; }
+.bairro-picker--set { display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: var(--s2); }
+.last-order { display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: var(--s3); margin: var(--s3) var(--s4) 0; padding: var(--s3) var(--s4); border: 1px solid var(--line); border-radius: var(--r-card); background: var(--surface); font-size: 14px; color: var(--ink); text-decoration: none; }
+.last-order--active { border-color: var(--ok); background: var(--ok-soft); }
+.last-order__cta { font-weight: 800; color: var(--ok); }
+.last-order__actions { display: inline-flex; align-items: center; gap: var(--s3); font-weight: 700; }
+.last-order__actions .btn { min-height: 40px; padding: 0 var(--s4); }
+@media (min-width: 900px) { .bairro-picker, .last-order { margin-left: var(--s6); margin-right: var(--s6); } }
+
+/* ------------------------------------------------- previsão e atraso */
+.eta--delay { background: var(--bar); color: var(--ink); }
+.eta__note { display: block; font-size: 13px; margin-top: 2px; }
+.eta--late { background: var(--danger-soft); color: var(--danger); font-weight: 700; }
+.eta--late a { color: inherit; }

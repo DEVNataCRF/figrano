@@ -56,7 +56,8 @@ function defaultData() {
         // QA 18/11/2026 (qwen 9B): com o raciocínio ligado ficou 3x mais lento e errou mais; padrão desligado
         ollamaThink: false,
       },
-      app: { autoStart: false },
+      // printerName: impressora da comanda (vazio = pergunta toda vez)
+      app: { autoStart: false, printerName: '' },
       online: {
         enabled: false,
         apiUrl: '', // servidor da página de pedidos

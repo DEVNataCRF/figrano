@@ -53,8 +53,13 @@ export default function Tracker({ id, suffix }) {
   const current = steps.findIndex((s) => s.status === order.status);
   const link = whatsappLink(store.whatsapp, `Olá! Sobre o pedido #${order.number}`);
   // Previsão: hora do pedido + preparo (+15 min de entrega), no horário de quem está vendo
+  // Previsão: conta de quando a loja aceitou (ou do pedido, antes disso) + preparo (+15 min de entrega)
+  // + o atraso que a loja avisou. Recalcula a cada atualização (10 s).
+  const delay = Number(order.delayMinutes) || 0;
   const etaMinutes = store.prepMinutes > 0 ? store.prepMinutes + (order.mode === 'DELIVERY' ? 15 : 0) : 0;
-  const eta = etaMinutes && order.createdAt ? new Date(new Date(order.createdAt).getTime() + etaMinutes * 60000).toLocaleTimeString('pt-BR', { hour: '2-digit', minute: '2-digit' }) : '';
+  const etaAt = etaMinutes && (order.acceptedAt || order.createdAt) ? new Date(new Date(order.acceptedAt || order.createdAt).getTime() + (etaMinutes + delay) * 60000) : null;
+  const eta = etaAt ? etaAt.toLocaleTimeString('pt-BR', { hour: '2-digit', minute: '2-digit' }) : '';
+  const late = Boolean(etaAt) && !finished && Date.now() > etaAt.getTime() + 5 * 60000;
   const lines = order.items?.length ? order.items.map((i) => ({ name: i.name, qty: i.quantity, price: i.unitPrice, notes: i.notes })) : saved?.items || [];
 
   return (
@@ -65,7 +70,10 @@ export default function Tracker({ id, suffix }) {
         {order.status === 'AWAITING_PIX' && <p className="muted">Falta só o Pix: pague e mande o comprovante no WhatsApp {who.da}.</p>}
         {order.status === 'NEW' && <p className="muted">A loja vai confirmar em instantes. Você também recebe os avisos pelo WhatsApp.</p>}
         {!finished && order.status !== 'NEW' && order.status !== 'AWAITING_PIX' && eta && (
-          <p className="eta">{order.mode === 'DELIVERY' ? 'Previsão de chegada' : 'Pronto para retirar'}: <strong>por volta das {eta}</strong></p>
+          <>
+            <p className={`eta${delay ? ' eta--delay' : ''}`}>{order.mode === 'DELIVERY' ? 'Previsão de chegada' : 'Pronto para retirar'}: <strong>por volta das {eta}</strong>{delay > 0 && <span className="eta__note">A loja avisou um atraso de {delay} min. Desculpe a espera!</span>}</p>
+            {late && <p className="eta eta--late" role="status">Está levando mais que o previsto. {link ? <a href={link}>Falar com {who.a} no WhatsApp</a> : 'Já já chega!'}</p>}
+          </>
         )}
       </header>
 

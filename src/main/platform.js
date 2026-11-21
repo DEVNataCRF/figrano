@@ -91,6 +91,7 @@ class Platform {
     this.menu = null; // DeliveryMenuDTO
     this.orders = []; // DeliveryOrderDTO[]
     this.knownStatus = new Map(); // id → status já visto (para avisar só mudanças)
+    this.knownDelay = new Map(); // atraso já visto de cada pedido
     this.primed = false;
     this.timers = [];
     this.lastError = '';
@@ -295,6 +296,13 @@ class Platform {
       for (const order of orders) {
         let previous = this.knownStatus.get(order.id);
         this.knownStatus.set(order.id, order.status);
+        // Atraso avisado no painel: aumentou desde a última leitura → avisa o cliente
+        const delayBefore = this.knownDelay.get(order.id);
+        const delayNow = Number(order.delayMinutes) || 0;
+        this.knownDelay.set(order.id, delayNow);
+        if (this.primed && delayBefore !== undefined && delayNow > delayBefore) {
+          this.onEvent({ type: 'order_delay', order: this.toLocal(order), added: delayNow - delayBefore });
+        }
         if (!this.primed) {
           const before = saved[order.id];
           const recent = Date.now() - new Date(order.updatedAt || order.createdAt || 0).getTime() < MISSED_STATUS_WINDOW_MS;
@@ -370,6 +378,7 @@ class Platform {
       mode: order.mode === 'PICKUP' ? 'pickup' : 'delivery',
       address: order.address || '',
       neighborhood: order.neighborhood || '',
+      delayMinutes: Number(order.delayMinutes) || 0,
       paymentMethod: order.paymentMethod,
       pixProofAt: order.pixProofAt || null,
       apiStatus: order.status,
