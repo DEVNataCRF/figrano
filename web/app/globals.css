@@ -354,3 +354,21 @@ a { color: var(--accent); }
   .product:active:not(:disabled), .btn:active:not(:disabled), .icon-btn:active, .stepper button:active:not(:disabled) { transform: none; }
   .skeleton { animation: none; }
 }
+
+/* ------------------------------------------------------------ barra de rolagem */
+/* Fina, arredondada e nas cores da marca, no lugar da barra cinza do sistema.
+   Chrome/Edge usam ::-webkit-scrollbar; o Firefox só aceita cor e espessura. */
+::-webkit-scrollbar { width: 12px; height: 12px; }
+::-webkit-scrollbar-track { background: transparent; }
+::-webkit-scrollbar-thumb {
+  background-color: rgb(43 22 8 / 0.22); border-radius: 999px;
+  border: 3px solid transparent; background-clip: padding-box;
+}
+::-webkit-scrollbar-thumb:hover { background-color: rgb(202 4 1 / 0.6); }
+::-webkit-scrollbar-thumb:active { background-color: rgb(202 4 1 / 0.8); }
+::-webkit-scrollbar-corner { background: transparent; }
+/* Dentro das janelas, a barra não encosta nos cantos arredondados */
+.sheet__panel::-webkit-scrollbar-track { margin: 18px 0; }
+@supports (-moz-appearance: none) {
+  html, .sheet__panel { scrollbar-width: thin; scrollbar-color: rgb(43 22 8 / 0.3) transparent; }
+}
