@@ -69,7 +69,6 @@ function defaultData() {
         apiUrl: 'http://127.0.0.1:3333/api/v1',
         siteUrl: 'http://localhost:3100', // site de delivery (link que o robô manda)
         buffetUrl: 'http://localhost:5173', // site do buffet (orçamento de festa)
-        panelUrl: 'http://localhost:5174', // painel (só em desenvolvimento; instalado, vem junto)
         transcribeUrl: 'http://127.0.0.1:8178', // transcrição de áudio no próprio PC (services/transcricao)
         tokenEncrypted: '',
       },

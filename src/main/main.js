@@ -644,7 +644,14 @@ function loadPanel() {
     win.loadURL('app://panel/index.html');
     return;
   }
-  const url = process.env.FIGRANO_PANEL_URL || store.settings.platform.panelUrl;
+  // Sem painel compilado não cai mais para um endereço local: o painel só existe dentro do app.
+  // FIGRANO_PANEL_URL continua valendo para quem desenvolve com o Vite aberto (-PainelNoNavegador).
+  const url = process.env.FIGRANO_PANEL_URL;
+  if (!url) {
+    const html = '<!doctype html><meta charset="utf-8"><body style="font:16px system-ui;background:#FFF8EC;color:#2B1608;padding:64px"><h1 style="font-size:24px">O painel não está instalado</h1><p>Rode <code>node scripts/build-panel.js</code> na pasta do Figrano e reabra o app.</p>';
+    win.loadURL(`data:text/html;charset=utf-8,${encodeURIComponent(html)}`);
+    return;
+  }
   win.loadURL(url).catch(() => {
     const html = `<!doctype html><meta charset="utf-8"><body style="font:16px system-ui;background:#FFF8EC;color:#2B1608;padding:64px">
       <h1 style="font-size:24px">O painel não abriu</h1>
