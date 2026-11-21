@@ -10,6 +10,13 @@ const plain = (v) => (v || '').normalize('NFD').replace(/[\u0300-\u036f]/g, '').
 
 /** Ruas conhecidas da cidade da loja (base do OpenStreetMap) para sugerir enquanto o cliente digita. */
 const CITY_STREETS = [guacui];
+/** Bairros conhecidos da cidade da loja, para sugerir no campo Bairro. */
+export function neighborhoodsOf(city) {
+  const key = plain(city);
+  if (!key) return [];
+  return CITY_STREETS.find((c) => plain(c.cidade) === key)?.bairros || [];
+}
+
 export function streetsOf(city) {
   const key = plain(city);
   if (!key) return [];

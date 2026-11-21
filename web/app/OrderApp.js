@@ -6,7 +6,7 @@ import { displayPhone, money, whatsappLink } from '../lib/format.js';
 import { PAYMENT_LABELS, placeOrder } from '../lib/api.js';
 import StorePhoto from './StorePhoto.js';
 import { formatDeliveryAddress, restoreDeliveryContact } from '../lib/delivery-address.js';
-import { contactOf, streetsOf } from '../lib/store.js';
+import { contactOf, neighborhoodsOf, streetsOf } from '../lib/store.js';
 import { nextOpening } from '../lib/hours.js';
 
 
@@ -550,6 +550,7 @@ function Checkout({ slug, refCode, store, items, cart, onPlaced }) {
   const byNeighborhood = store.neighborhoods.length > 0;
   const who = contactOf(store.owner);
   const streets = useMemo(() => streetsOf(store.city), [store.city]);
+  const cityNeighborhoods = useMemo(() => neighborhoodsOf(store.city), [store.city]);
   const [payment, setPayment] = useState(store.payments[0] || '');
   // Mesma chave se o cliente clicar duas vezes: a loja grava um pedido só
   const [idempotencyKey] = useState(() => `site-${Date.now()}-${Math.random().toString(36).slice(2, 10)}`);
@@ -563,7 +564,7 @@ function Checkout({ slug, refCode, store, items, cart, onPlaced }) {
     const saved = restoreDeliveryContact(readStorage(`sabores:delivery:customer:${slug}`, {}));
     setForm(saved);
     // Dados completos de um pedido anterior: mostra o resumo; incompletos: abre os campos
-    const hasAddress = saved.address.trim() && (saved.noNumber || saved.number.trim()) && !saved.legacyAddress;
+    const hasAddress = saved.address.trim() && (saved.noNumber || saved.number.trim()) && saved.neighborhood.trim() && !saved.legacyAddress;
     setEditingContact(!(saved.name.trim() && saved.phone.trim() && hasAddress));
   }, [slug]);
 
@@ -593,7 +594,8 @@ function Checkout({ slug, refCode, store, items, cart, onPlaced }) {
         customer: { name: form.name.trim(), phoneWhatsapp: form.phone },
         mode: mode === 'pickup' ? 'PICKUP' : 'DELIVERY',
         address: mode === 'delivery' ? fullAddress : null,
-        neighborhood: mode === 'delivery' && byNeighborhood ? form.neighborhood : null,
+        // Bairro sempre separado: com lista de taxas define o valor; sem lista vai para a comanda
+        neighborhood: mode === 'delivery' ? form.neighborhood.trim() || null : null,
         paymentMethod: payment,
         changeFor: change && change > 0 ? change : null,
         notes: notes.trim() || null,
@@ -656,6 +658,12 @@ function Checkout({ slug, refCode, store, items, cart, onPlaced }) {
               ))}
             </select>
             <small>Seu bairro não está na lista? Ainda não entregamos lá{store.pickup ? ', mas você pode retirar na loja' : ''}.</small>
+          </label>
+        )}
+        {mode === 'delivery' && !byNeighborhood && editingContact && (
+          <label className="field">Bairro
+            <input type="text" required maxLength={80} autoComplete="address-level3" list={cityNeighborhoods.length ? 'bairros-da-cidade' : undefined} placeholder="Ex.: Centro" value={form.neighborhood} onChange={update('neighborhood')} />
+            {cityNeighborhoods.length > 0 && <datalist id="bairros-da-cidade">{cityNeighborhoods.map((n) => <option key={n} value={n} />)}</datalist>}
           </label>
         )}
         {mode === 'delivery' && editingContact && (

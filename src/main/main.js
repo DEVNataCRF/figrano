@@ -15,6 +15,8 @@ const { statusAviso, reviewRequest } = require('./robo/avisos');
 const { SerialQueue, SendQueue } = require('./queues');
 const { WhatsApp } = require('./whatsapp');
 const { iconPng, alertDotPng } = require('./icon');
+const QRCode = require('qrcode');
+const { receiptHtml, mapsUrl } = require('./comanda');
 const { startUpdater } = require('./updater');
 const { Platform } = require('./platform');
 const { ImageStore } = require('./images');
@@ -607,36 +609,18 @@ function registerApi() {
 
 const escapeHtml = (text) => String(text ?? '').replace(/[&<>"']/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
 
-function receiptHtml(order) {
-  const s = platform.storeSettings(store.settings.store);
-  const lines = order.items.map((line) => `
-    <tr><td>${line.qty}x ${escapeHtml(line.name)}${line.notes ? `<br><small>${escapeHtml(line.notes)}</small>` : ''}</td>
-    <td class="r">${money(line.qty * line.price)}</td></tr>`).join('');
-  return `<!doctype html><meta charset="utf-8"><title>Pedido ${order.number}</title>
-  <style>
-    body{font:13px/1.4 Consolas,monospace;width:72mm;margin:0;padding:4mm;color:#000}
-    h1{font-size:16px;margin:0 0 2mm} table{width:100%;border-collapse:collapse}
-    td{padding:1mm 0;vertical-align:top} .r{text-align:right;white-space:nowrap}
-    hr{border:0;border-top:1px dashed #000;margin:2mm 0} small{font-size:11px}
-  </style>
-  <h1>${escapeHtml(s.name)}</h1>
-  <div>Pedido #${order.number} · ${new Date(order.createdAt).toLocaleString('pt-BR')}</div><hr>
-  <div>${escapeHtml(order.customer.name)} · ${escapeHtml(order.customer.phone)}</div>
-  <div>${order.mode === 'delivery' ? `Entrega: ${escapeHtml(order.address)}` : 'Retirada na loja'}</div><hr>
-  <table>${lines}</table><hr>
-  <table>
-    <tr><td>Subtotal</td><td class="r">${money(order.subtotal)}</td></tr>
-    ${order.fee ? `<tr><td>Entrega</td><td class="r">${money(order.fee)}</td></tr>` : ''}
-    <tr><td><b>Total</b></td><td class="r"><b>${money(order.total)}</b></td></tr>
-  </table>
-  <div>Pagamento: ${escapeHtml(order.payment)}${order.changeFor ? ` (troco para ${money(order.changeFor)})` : ''}</div>
-  ${order.notes ? `<hr><div>Obs.: ${escapeHtml(order.notes)}</div>` : ''}`;
-}
-
-function printOrder(order) {
+/** Comanda: layout em comanda.js (cozinha + entregador, com QR do mapa e quanto cobrar). */
+async function printOrder(order) {
   if (!order) throw new Error('Pedido não encontrado.');
+  const s = platform.storeSettings(store.settings.store);
+  const menu = platform.menu || {};
+  const info = { name: s.name, city: menu.city || '', state: menu.state || '', pixOnline: Boolean(menu.config?.pixOnline?.enabled) };
+  let qr = '';
+  if (order.mode === 'delivery' && order.address) {
+    try { qr = await QRCode.toDataURL(mapsUrl(order, info), { margin: 1, width: 240, errorCorrectionLevel: 'M' }); } catch { /* sem QR, a comanda sai igual */ }
+  }
   const printer = new BrowserWindow({ show: false, webPreferences: { sandbox: true, javascript: false } });
-  printer.loadURL(`data:text/html;charset=utf-8,${encodeURIComponent(receiptHtml(order))}`);
+  printer.loadURL(`data:text/html;charset=utf-8,${encodeURIComponent(receiptHtml(order, info, qr))}`);
   printer.webContents.once('did-finish-load', () => {
     printer.webContents.print({ silent: false, printBackground: false }, () => printer.destroy());
   });
