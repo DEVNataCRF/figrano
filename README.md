@@ -84,6 +84,20 @@ docs/            referência de engenharia reversa usada como inspiração
 
 Os dados ficam em `figrano-dados.json`, na pasta de dados do usuário do aplicativo.
 
+## Site de delivery por loja
+
+O site em `web` usa nome e WhatsApp do catálogo público da API. O perfil público também disponibiliza responsável, cidade e estado: com o responsável preenchido o site fala "a Sil", e com a cidade de Guaçuí sugere as ruas dela no endereço. Sacola e contato salvo são separados por identificação da loja; o endereço não sugere ruas de uma cidade fixa. Os pedidos continuam sujeitos às regras e valores conferidos na API.
+
+Configurações públicas no ambiente de build do site:
+
+- `NEXT_PUBLIC_API_URL`: API da loja, terminando em `/api/v1`.
+- `NEXT_PUBLIC_BUFFET_URL`: endereço do site de buffet; sem valor, o convite para buffet não aparece. O endereço de desenvolvimento anterior desta instalação foi mantido somente em `web/.env.local`.
+- `NEXT_PUBLIC_SITE_URL`: endereço público deste delivery, para os metadados de compartilhamento.
+- `NEXT_PUBLIC_STORE_NAME`, `NEXT_PUBLIC_STORE_TITLE` e `NEXT_PUBLIC_STORE_DESCRIPTION`: nome no topo e prévia do link (WhatsApp, Google); sem valor, ficam genéricos. Os valores da Sil estão em `web/.env.local` desta máquina: configure-os antes de publicar.
+- `NEXT_PUBLIC_STORE_LOGO_URL` e `NEXT_PUBLIC_DELIVERY_COVER_URL`: imagens da instalação; sem valor, usam os arquivos locais de marca e capa já existentes.
+
+`npm run build` em `web` gera o site estático com as fotos de `web/public`. Para uma prévia separada, `FIGRANO_NEXT_DIST_DIR=.next-design` gera o pacote nessa pasta em vez de `out`; a prévia deve servir essa pasta, não uma cópia antiga de `out`. Variáveis públicas devem ser configuradas para cada instalação antes do build; não são campos secretos.
+
 ## Avisos
 
 - A integração usa a biblioteca aberta `@wppconnect/wa-js` para automatizar o WhatsApp Web. Isso não é permitido pelos termos do WhatsApp e o número pode ser banido. A alternativa oficial é a API do WhatsApp Business.

@@ -1,13 +1,15 @@
 'use client';
 
-import { useEffect, useMemo, useState } from 'react';
+import { useEffect, useMemo, useRef, useState } from 'react';
 import { money, whatsappLink } from '../lib/format.js';
 import { PAYMENT_LABELS, placeOrder } from '../lib/api.js';
-import cidade from '../lib/guacui.json';
+import StorePhoto from './StorePhoto.js';
+import { contactOf, streetsOf } from '../lib/store.js';
 
-const SLUG = 'sabores-da-sil';
+
+
 const cartKey = (slug) => `sabores:delivery:cart:${slug}`;
-const BUFFET_URL = process.env.NEXT_PUBLIC_BUFFET_URL || 'http://localhost:5173';
+const BUFFET_URL = process.env.NEXT_PUBLIC_BUFFET_URL || '';
 const DAY_NAMES = ['Domingo', 'Segunda', 'Terça', 'Quarta', 'Quinta', 'Sexta', 'Sábado'];
 
 /** Cardápio da API → formato da tela (itens do delivery estão sempre à venda). */
@@ -15,11 +17,13 @@ function fromApi(data) {
   const c = data.config;
   return {
     store: {
-      name: data.companyName || 'Sabores da Sil',
-      logo: '/marca/logo.png',
-      cover: '/fotos/caixas-festa-01-1280.webp',
+      name: data.companyName || 'Nossa loja',
+      logo: process.env.NEXT_PUBLIC_STORE_LOGO_URL || '/marca/logo.png',
+      cover: process.env.NEXT_PUBLIC_DELIVERY_COVER_URL || '/fotos/caixas-festa-01-1280.webp',
       address: c.pickupAddress || '',
       whatsapp: data.whatsappPhone || '',
+      owner: (data.ownerName || '').trim(),
+      city: data.city || '',
       deliveryFee: Number(c.deliveryFee) || 0,
       // Taxa por bairro: com a lista preenchida, só entrega nesses bairros
       neighborhoods: Array.isArray(c.neighborhoods) ? c.neighborhoods.map((n) => ({ name: n.name, fee: Number(n.fee) || 0 })) : [],
@@ -62,8 +66,9 @@ function writeStorage(key, value) {
 const initials = (name) => String(name).split(/\s+/).filter(Boolean).slice(0, 2).map((w) => w[0]).join('').toUpperCase();
 
 export default function OrderApp({ menu: data, refCode }) {
-  const slug = SLUG;
+  const slug = `${data.companyName || 'loja'}:${data.whatsappPhone || ''}`;
   const { store, menu, canOrder, open, reason } = useMemo(() => fromApi(data), [data]);
+  useEffect(() => { document.title = `${store.name} · Delivery`; }, [store.name]);
   const items = useMemo(() => {
     const map = new Map();
     for (const category of menu) for (const item of category.items) map.set(item.id, item);
@@ -71,7 +76,9 @@ export default function OrderApp({ menu: data, refCode }) {
   }, [menu]);
 
   // Linha da sacola: { key, itemId, qty, notes }. Mesmo item com observação diferente vira outra linha.
-  const [cart, setCart] = useState([]);
+  const [savedCart, setCart] = useState([]);
+  const [cartStore, setCartStore] = useState(null);
+  const cart = cartStore === slug ? savedCart : [];
   const [query, setQuery] = useState('');
   const [product, setProduct] = useState(null);
   const [sheet, setSheet] = useState(null); // 'bag' | 'checkout' | null
@@ -81,8 +88,9 @@ export default function OrderApp({ menu: data, refCode }) {
   useEffect(() => {
     const saved = readStorage(cartKey(slug), []);
     setCart(Array.isArray(saved) ? saved.filter((line) => items.get(line.itemId)?.available) : []);
+    setCartStore(slug);
   }, [slug, items]);
-  useEffect(() => { writeStorage(cartKey(slug), cart); }, [slug, cart]);
+  useEffect(() => { if (cartStore === slug) writeStorage(cartKey(slug), savedCart); }, [slug, savedCart, cartStore]);
 
   // Destaca na barra a categoria que está na tela.
   useEffect(() => {
@@ -166,10 +174,10 @@ export default function OrderApp({ menu: data, refCode }) {
             {whatsapp && <> <a href={whatsapp}>Falar no WhatsApp</a></>}
           </p>
         )}
-        <p className="festa-link">
-          <span>Vai ter festa? A Sil também faz buffet e salgados por cento.</span>
+        {BUFFET_URL && <p className="festa-link">
+          <span>{store.owner ? `Vai ter festa? ${contactOf(store.owner).A} também faz buffet e salgados por cento.` : 'Vai ter festa? Conheça também as opções de buffet e salgados por cento.'}</span>
           <a href={`${BUFFET_URL}/#orcamento`}>Pedir orçamento de festa</a>
-        </p>
+        </p>}
       </header>
 
       <div className="layout">
@@ -210,8 +218,9 @@ export default function OrderApp({ menu: data, refCode }) {
                         <span className="product__name">{inCart > 0 && <span className="product__count">{inCart}x</span>}{item.name}</span>
                         {item.description && <span className="product__desc">{item.description}</span>}
                         <span className="product__price num">{item.available ? money(item.price) : 'Esgotado'}</span>
+                        <span className="product__action">{inCart > 0 ? 'Adicionar mais' : 'Escolher produto'} <span className="product__add" aria-hidden="true">+</span></span>
                       </span>
-                      {item.photo && <img className="product__img" src={item.photo} alt="" loading="lazy" />}
+                      <StorePhoto className="product__img" src={item.photo} alt="" />
                     </button>
                   );
                 })}
@@ -272,15 +281,33 @@ export default function OrderApp({ menu: data, refCode }) {
   );
 }
 
-function Sheet({ title, onClose, children }) {
+function useSheetFocus(onClose, focusKey) {
+  const ref = useRef(null);
   useEffect(() => {
-    const onKey = (event) => { if (event.key === 'Escape') onClose(); };
+    const previous = document.activeElement;
+    const panel = ref.current;
+    panel?.focus();
+    const onKey = (event) => {
+      if (event.key === 'Escape') { event.preventDefault(); onClose(); }
+      if (event.key !== 'Tab' || !panel) return;
+      const fields = [...panel.querySelectorAll('button:not(:disabled), input:not(:disabled), select:not(:disabled), textarea:not(:disabled), a[href]')].filter(el => el.getClientRects().length);
+      const first = fields[0]; const last = fields.at(-1);
+      if (!first) { event.preventDefault(); panel.focus(); }
+      else if (!panel.contains(document.activeElement)) { event.preventDefault(); (event.shiftKey ? last : first).focus(); }
+      else if (event.shiftKey && (document.activeElement === first || document.activeElement === panel)) { event.preventDefault(); last.focus(); }
+      else if (!event.shiftKey && document.activeElement === last) { event.preventDefault(); first.focus(); }
+    };
     window.addEventListener('keydown', onKey);
-    return () => window.removeEventListener('keydown', onKey);
-  }, [onClose]);
+    return () => { window.removeEventListener('keydown', onKey); if (previous?.isConnected) previous.focus(); };
+  }, [focusKey]); // Troca de etapa move o foco; digitação mantém a posição atual.
+  return ref;
+}
+
+function Sheet({ title, onClose, children }) {
+  const panel = useSheetFocus(onClose, title);
   return (
     <div className="sheet" onClick={(event) => { if (event.target === event.currentTarget) onClose(); }}>
-      <div className="sheet__panel" role="dialog" aria-modal="true" aria-label={title}>
+      <div ref={panel} tabIndex={-1} className="sheet__panel" role="dialog" aria-modal="true" aria-label={title}>
         <div className="sheet__head">
           <h2>{title}</h2>
           <button type="button" className="icon-btn" onClick={onClose} aria-label="Fechar">
@@ -296,18 +323,14 @@ function Sheet({ title, onClose, children }) {
 function ProductSheet({ item, canOrder, onClose, onAdd }) {
   const [qty, setQty] = useState(1);
   const [notes, setNotes] = useState('');
-  useEffect(() => {
-    const onKey = (event) => { if (event.key === 'Escape') onClose(); };
-    window.addEventListener('keydown', onKey);
-    return () => window.removeEventListener('keydown', onKey);
-  }, [onClose]);
+  const panel = useSheetFocus(onClose, item.id);
   return (
     <div className="sheet" onClick={(event) => { if (event.target === event.currentTarget) onClose(); }}>
-      <div className="sheet__panel sheet__panel--product" role="dialog" aria-modal="true" aria-label={item.name}>
+      <div ref={panel} tabIndex={-1} className="sheet__panel sheet__panel--product" role="dialog" aria-modal="true" aria-label={item.name}>
         <button type="button" className="icon-btn icon-btn--float" onClick={onClose} aria-label="Fechar">
           <svg viewBox="0 0 20 20" width="20" height="20" aria-hidden="true"><path d="M5 5l10 10M15 5L5 15" stroke="currentColor" strokeWidth="2" strokeLinecap="round" /></svg>
         </button>
-        {item.photo && <img className="pd__img" src={item.photo} alt="" />}
+        <StorePhoto className="pd__img" src={item.photo} alt="" />
         <div className="pd__body">
           <h2>{item.name}</h2>
           {item.description && <p className="muted">{item.description}</p>}
@@ -396,6 +419,8 @@ function Checkout({ slug, refCode, store, items, cart, onPlaced }) {
   const [mode, setMode] = useState(store.delivery ? 'delivery' : 'pickup');
   const [form, setForm] = useState({ name: '', phone: '', address: '', complement: '', neighborhood: '' });
   const byNeighborhood = store.neighborhoods.length > 0;
+  const who = contactOf(store.owner);
+  const streets = useMemo(() => streetsOf(store.city), [store.city]);
   const [payment, setPayment] = useState(store.payments[0] || '');
   // Mesma chave se o cliente clicar duas vezes: a loja grava um pedido só
   const [idempotencyKey] = useState(() => `site-${Date.now()}-${Math.random().toString(36).slice(2, 10)}`);
@@ -404,7 +429,7 @@ function Checkout({ slug, refCode, store, items, cart, onPlaced }) {
   const [error, setError] = useState('');
   const [sending, setSending] = useState(false);
 
-  useEffect(() => { setForm((f) => ({ ...f, ...readStorage('sabores:delivery:customer', {}) })); }, []);
+  useEffect(() => { setForm((f) => ({ ...f, ...readStorage(`sabores:delivery:customer:${slug}`, {}) })); }, [slug]);
 
   const update = (key) => (event) => setForm((f) => ({ ...f, [key]: event.target.value }));
   const subtotal = cart.reduce((sum, l) => sum + l.qty * (items.get(l.itemId)?.price || 0), 0);
@@ -420,7 +445,7 @@ function Checkout({ slug, refCode, store, items, cart, onPlaced }) {
     setError('');
     setSending(true);
     try {
-      writeStorage('sabores:delivery:customer', { name: form.name, phone: form.phone, address: form.address, complement: form.complement, neighborhood: form.neighborhood });
+      writeStorage(`sabores:delivery:customer:${slug}`, { name: form.name, phone: form.phone, address: form.address, complement: form.complement, neighborhood: form.neighborhood });
       const change = cash && changeFor.trim() ? Number(changeFor.replace(/[^\d,.]/g, '').replace(',', '.')) : null;
       const order = await placeOrder({
         customer: { name: form.name.trim(), phoneWhatsapp: form.phone },
@@ -463,7 +488,7 @@ function Checkout({ slug, refCode, store, items, cart, onPlaced }) {
         <legend>Seus dados</legend>
         <label className="field">Nome<input type="text" required autoComplete="name" value={form.name} onChange={update('name')} /></label>
         <label className="field">WhatsApp com DDD
-          <input type="tel" required autoComplete="tel" inputMode="tel" placeholder="(28) 99999-9999" value={form.phone} onChange={update('phone')} />
+          <input type="tel" required autoComplete="tel" inputMode="tel" placeholder="(DDD) 99999-9999" value={form.phone} onChange={update('phone')} />
           <small>Os avisos do pedido chegam por aqui.</small>
         </label>
         {mode === 'delivery' && byNeighborhood && (
@@ -480,19 +505,21 @@ function Checkout({ slug, refCode, store, items, cart, onPlaced }) {
         {mode === 'delivery' && (
           <>
             <label className="field">Rua e número
-              {/* Sugere as ruas de Guaçuí enquanto digita (base do OpenStreetMap) */}
               <input
                 type="text"
                 required
-                list="ruas-da-cidade"
+                // Sugere as ruas da cidade da loja enquanto digita (base do OpenStreetMap)
+                list={streets.length ? 'ruas-da-cidade' : undefined}
                 autoComplete="street-address"
-                placeholder={byNeighborhood ? 'Ex.: Rua Marechal Deodoro, 120' : 'Ex.: Rua Marechal Deodoro, 120, Centro'}
+                placeholder={byNeighborhood ? 'Ex.: Rua Principal, 120' : 'Ex.: Rua Principal, 120, Centro'}
                 value={form.address}
                 onChange={update('address')}
               />
-              <datalist id="ruas-da-cidade">
-                {cidade.ruas.map((r) => <option key={r.nome} value={r.nome} />)}
-              </datalist>
+              {streets.length > 0 && (
+                <datalist id="ruas-da-cidade">
+                  {streets.map((nome) => <option key={nome} value={nome} />)}
+                </datalist>
+              )}
             </label>
             <label className="field">Complemento ou ponto de referência <small>(opcional)</small>
               <input type="text" placeholder="Ex.: casa azul, apto 2, perto da praça" value={form.complement} onChange={update('complement')} />
@@ -513,7 +540,7 @@ function Checkout({ slug, refCode, store, items, cart, onPlaced }) {
         </div>
         {payment === 'PIX' && store.pixOnline && (
           <p className="hint">
-            Depois de enviar, aparece o Pix copia e cola com o valor. Seu pedido só vai para a cozinha quando a Sil
+            Depois de enviar, aparece o Pix copia e cola com o valor. Seu pedido só vai para a cozinha quando {who.a}
             receber o comprovante no WhatsApp.
           </p>
         )}
@@ -528,17 +555,21 @@ function Checkout({ slug, refCode, store, items, cart, onPlaced }) {
         <textarea maxLength={300} placeholder="Algo que a loja precisa saber?" value={notes} onChange={(e) => setNotes(e.target.value)} />
       </label>
 
+      <section className="checkout__review" aria-label="Itens do pedido">
+        <h3>Confira os itens</h3>
+        <ul>{cart.map(line => <li key={line.key}><span>{line.qty} × {items.get(line.itemId)?.name}{line.notes && <small>{line.notes}</small>}</span><strong className="num">{money(line.qty * (items.get(line.itemId)?.price || 0))}</strong></li>)}</ul>
+      </section>
+      {error && <p className="error" role="alert">{error}</p>}
+      <div className="checkout__footer">
       <div className="totals num">
         <div><span>Subtotal</span><span>{money(subtotal)}</span></div>
         {mode === 'delivery' && <div><span>Entrega</span><span>{byNeighborhood && !chosen ? 'escolha o bairro' : fee ? money(fee) : 'Grátis'}</span></div>}
-        <div className="grand"><span>Total</span><span>{money(total)}</span></div>
+        <div className="grand"><span>Total</span><span>{mode === 'delivery' && byNeighborhood && !chosen ? 'Escolha o bairro' : money(total)}</span></div>
       </div>
-
-      {error && <p className="error" role="alert">{error}</p>}
-
       <button className="btn btn--primary btn--block" disabled={sending || cart.length === 0}>
-        {sending ? 'Enviando…' : `Enviar pedido · ${money(total)}`}
+        {sending ? 'Enviando…' : mode === 'delivery' && byNeighborhood && !chosen ? 'Enviar pedido' : `Enviar pedido · ${money(total)}`}
       </button>
+      </div>
     </form>
   );
 }

@@ -3,6 +3,7 @@
 import { useEffect, useState } from 'react';
 import { money, whatsappLink, STATUS_STEPS } from '../../lib/format.js';
 import { PAYMENT_LABELS, fetchMenu, trackOrder } from '../../lib/api.js';
+import { contactOf } from '../../lib/store.js';
 
 const POLL_MS = 10000;
 
@@ -13,14 +14,15 @@ function readStorage(key) {
 /** Acompanhamento do pedido: status da loja a cada 10 s. */
 export default function Tracker({ id, suffix }) {
   const [order, setOrder] = useState(null);
-  const [store, setStore] = useState({ name: 'Sabores da Sil', whatsapp: '', prepMinutes: 0 });
+  const [store, setStore] = useState({ name: 'Nossa loja', whatsapp: '', prepMinutes: 0, owner: '' });
+  const who = contactOf(store.owner);
   const [error, setError] = useState('');
   const saved = typeof window !== 'undefined' ? readStorage(`sabores:delivery:order:${id}`) : null;
   const finished = order && (order.status === 'DONE' || order.status === 'CANCELED');
 
   useEffect(() => {
     fetchMenu()
-      .then((m) => setStore({ name: m.companyName, whatsapp: m.whatsappPhone, prepMinutes: m.config.prepMinutes }))
+      .then((m) => setStore({ name: m.companyName, whatsapp: m.whatsappPhone, prepMinutes: m.config.prepMinutes, owner: m.ownerName || '' }))
       .catch(() => {});
   }, []);
 
@@ -57,7 +59,7 @@ export default function Tracker({ id, suffix }) {
       <header className="store" style={{ borderBottom: 0, paddingBottom: 0 }}>
         <p className="muted">{store.name}</p>
         <h1>{order.status === 'CANCELED' ? 'Pedido cancelado' : `Pedido #${order.number}`}</h1>
-        {order.status === 'AWAITING_PIX' && <p className="muted">Falta só o Pix: pague e mande o comprovante no WhatsApp da Sil.</p>}
+        {order.status === 'AWAITING_PIX' && <p className="muted">Falta só o Pix: pague e mande o comprovante no WhatsApp {who.da}.</p>}
         {order.status === 'NEW' && <p className="muted">A loja vai confirmar em instantes. Você também recebe os avisos pelo WhatsApp.</p>}
         {!finished && order.status !== 'NEW' && store.prepMinutes > 0 && <p className="muted">Preparo médio de {store.prepMinutes} min.</p>}
       </header>
@@ -65,7 +67,7 @@ export default function Tracker({ id, suffix }) {
       {order.status === 'AWAITING_PIX' && order.pix && <PixBox pix={order.pix} number={order.number} />}
 
       {order.status === 'CANCELED' ? (
-        <p className="error">A loja cancelou este pedido. {link && <a href={link}>Fale com a loja no WhatsApp</a>}</p>
+        <p className="error">A loja cancelou este pedido. {link && <a href={link}>Fale com {who.a} no WhatsApp</a>}</p>
       ) : (
         <ol className="steps" aria-label="Andamento do pedido">
           {steps.map((step, index) => (
@@ -92,7 +94,7 @@ export default function Tracker({ id, suffix }) {
         </p>
       </section>
 
-      {link && <a className="btn btn--block" href={link}>Falar com a loja no WhatsApp</a>}
+      {link && <a className="btn btn--block" href={link}>Falar com {who.a} no WhatsApp</a>}
       <a className="btn btn--block" href="/">Voltar ao cardápio</a>
     </main>
   );
@@ -116,7 +118,7 @@ function PixBox({ pix, number }) {
       <p className="pix__amount num">{money(pix.amount)}</p>
       <ol className="pix__steps">
         <li>Copie o código abaixo e cole no app do seu banco, em <b>Pix copia e cola</b>.</li>
-        <li>Mande o <b>comprovante</b> no WhatsApp da Sil. Seu pedido #{number} só vai para a cozinha depois que ela receber.</li>
+        <li>Mande o <b>comprovante</b> no WhatsApp {who.da}. Seu pedido #{number} só vai para a cozinha depois que ela receber.</li>
       </ol>
       <label className="field">
         Código Pix

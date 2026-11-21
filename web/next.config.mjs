@@ -1,6 +1,7 @@
 /** @type {import('next').NextConfig} */
 const nextConfig = {
   poweredByHeader: false,
+  distDir: process.env.FIGRANO_NEXT_DIST_DIR || '.next',
   // Site estático (Cloudflare Pages): tudo vem da API do Sabores pelo navegador
   output: 'export',
   trailingSlash: true,

@@ -1,9 +1,10 @@
 import './globals.css';
 
 export const metadata = {
-  title: 'Sabores da Sil · Delivery',
-  description: 'Salgados, porções e delícias da Sil, de Guaçuí-ES. Peça direto pelo site, sem taxa de aplicativo.',
-  openGraph: { images: ['/marca/og.jpg'] },
+  // Prévia do link (WhatsApp, Google): vem da instalação, não do código
+  title: process.env.NEXT_PUBLIC_STORE_TITLE || 'Cardápio · Delivery',
+  description: process.env.NEXT_PUBLIC_STORE_DESCRIPTION || 'Confira o cardápio e faça seu pedido direto pelo site da loja.',
+  ...(process.env.NEXT_PUBLIC_SITE_URL ? { metadataBase: new URL(process.env.NEXT_PUBLIC_SITE_URL), openGraph: { images: ['/marca/og.jpg'] } } : {}),
   icons: { icon: '/favicon.ico' },
 };
 

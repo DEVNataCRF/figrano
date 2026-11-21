@@ -22,7 +22,7 @@ export default function StorePage() {
   if (error && !menu) {
     return (
       <main className="page">
-        <h1>Sabores da Sil</h1>
+        <h1>{process.env.NEXT_PUBLIC_STORE_NAME || 'Cardápio da loja'}</h1>
         <p className="error" role="alert">{error}</p>
       </main>
     );
