@@ -634,7 +634,7 @@ function Checkout({ slug, refCode, store, items, cart, onPlaced }) {
         </motion.div>}</AnimatePresence>
         {payment === 'PIX' && store.pixOnline && (
           <p className="hint">
-            Depois de enviar, aparece o Pix copia e cola com o valor. Seu pedido só vai para a cozinha quando {who.a}
+            Depois de enviar, aparece o Pix copia e cola com o valor. Seu pedido só vai para a cozinha quando {who.a}{' '}
             receber o comprovante no WhatsApp.
           </p>
         )}

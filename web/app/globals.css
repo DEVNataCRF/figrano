@@ -279,7 +279,16 @@ a { color: var(--accent); }
 .checkout__review li:last-child { border: 0; }
 .checkout__review small { display: block; color: var(--muted); }
 .checkout__review strong { white-space: nowrap; }
-.checkout__footer { position: sticky; bottom: -1px; z-index: 2; display: grid; gap: 16px; padding: 16px 0 max(4px, env(safe-area-inset-bottom)); background: var(--surface); border-top: 1px solid var(--line); }
+/* Rodapé fixo do fechamento: vai de borda a borda da janela e até o fundo dela, cobrindo o
+   espaçamento da janela (antes sobravam frestas por onde o conteúdo rolando aparecia). */
+.checkout__footer {
+  --pad-fundo: calc(var(--s5) + env(safe-area-inset-bottom));
+  position: sticky; bottom: calc(-1 * var(--pad-fundo)); z-index: 2; display: grid; gap: 16px;
+  margin: 0 calc(-1 * var(--s4)) calc(-1 * var(--pad-fundo));
+  padding: var(--s4) var(--s4) var(--pad-fundo);
+  background: var(--bg); border-top: 1px solid var(--line);
+  box-shadow: 0 -10px 18px -14px rgb(43 22 8 / 0.35);
+}
 .checkout__footer .totals { margin: 0; padding: 0; border: 0; }
 @media (max-width: 420px) { .hero__logo { width: 72px; height: 72px; margin-top: -28px; } .hero__text h1 { font-size: 26px; } }
 
