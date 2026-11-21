@@ -7,6 +7,7 @@ import { PAYMENT_LABELS, placeOrder } from '../lib/api.js';
 import StorePhoto from './StorePhoto.js';
 import { formatDeliveryAddress, restoreDeliveryContact } from '../lib/delivery-address.js';
 import { contactOf, streetsOf } from '../lib/store.js';
+import { nextOpening } from '../lib/hours.js';
 
 
 
@@ -36,6 +37,7 @@ function fromApi(data) {
       delivery: c.acceptsDelivery,
       pickup: c.acceptsPickup,
       pixOnline: Boolean(c.pixOnline?.enabled),
+      rawHours: c.hours,
       hours: DAY_NAMES.map((name, day) => {
         const slot = c.hours?.[String(day)];
         return { name, text: !slot || slot.closed ? 'Fechado' : `${slot.open} às ${slot.close}` };
@@ -71,6 +73,7 @@ const initials = (name) => String(name).split(/\s+/).filter(Boolean).slice(0, 2)
 export default function OrderApp({ menu: data, refCode }) {
   const slug = `${data.companyName || 'loja'}:${data.whatsappPhone || ''}`;
   const { store, menu, canOrder, open, reason } = useMemo(() => fromApi(data), [data]);
+  const opening = useMemo(() => (open ? null : nextOpening(store.rawHours)), [open, store.rawHours]);
   useEffect(() => { document.title = `${store.name} · Delivery`; }, [store.name]);
   const items = useMemo(() => {
     const map = new Map();
@@ -88,6 +91,21 @@ export default function OrderApp({ menu: data, refCode }) {
   const [showInfo, setShowInfo] = useState(false);
   const [activeCat, setActiveCat] = useState(menu[0]?.id || '');
   const [overlayMounted, setOverlayMounted] = useState(false);
+  const [toast, setToast] = useState(null);
+  useEffect(() => {
+    if (!toast) return;
+    const timer = setTimeout(() => setToast(null), 2200);
+    return () => clearTimeout(timer);
+  }, [toast]);
+  // Barra de busca/abas presa no topo ganha sombra, para se perceber que ela ficou fixa
+  const toolbarRef = useRef(null);
+  const [stuck, setStuck] = useState(false);
+  useEffect(() => {
+    const check = () => setStuck((toolbarRef.current?.getBoundingClientRect().top ?? 1) <= 0.5);
+    window.addEventListener('scroll', check, { passive: true });
+    check();
+    return () => window.removeEventListener('scroll', check);
+  }, []);
   useEffect(() => { if (product || sheet) setOverlayMounted(true); }, [product, sheet]);
 
   useEffect(() => {
@@ -176,7 +194,7 @@ export default function OrderApp({ menu: data, refCode }) {
             <h1>{store.name}</h1>
             <div className="hero__facts">
               <span className={`status ${canOrder ? 'status--open' : 'status--closed'}`}>
-                {canOrder ? 'Aberto' : open ? 'Pedidos pausados' : 'Fechado'}
+                {canOrder ? 'Aberto' : open ? 'Pedidos pausados' : 'Fechado'}{!canOrder && !open && opening ? ` · abre ${opening.text}` : ''}
               </span>
               {facts.map((fact) => <span key={fact}>{fact}</span>)}
             </div>
@@ -196,7 +214,7 @@ export default function OrderApp({ menu: data, refCode }) {
         )}
         {!canOrder && (
           <p className="notice">
-            {reason || 'Estamos fechados agora. Dá para olhar o cardápio e pedir quando abrirmos.'}
+            {!open && opening ? `Estamos fechados agora. Abrimos ${opening.text}. Enquanto isso, dá para olhar o cardápio.` : reason || 'Estamos fechados agora. Dá para olhar o cardápio e pedir quando abrirmos.'}
             {whatsapp && <> <a href={whatsapp}>Falar no WhatsApp</a></>}
           </p>
         )}
@@ -208,7 +226,7 @@ export default function OrderApp({ menu: data, refCode }) {
 
       <div className="layout" inert={product || sheet || overlayMounted ? true : undefined}>
         <main className="menu">
-          <div className="toolbar">
+          <div ref={toolbarRef} className={`toolbar${stuck ? ' toolbar--stuck' : ''}`}>
             <label className="search">
               <span className="sr-only">Buscar no cardápio</span>
               <svg aria-hidden="true" viewBox="0 0 20 20" width="18" height="18"><circle cx="8.5" cy="8.5" r="5.5" fill="none" stroke="currentColor" strokeWidth="2" /><path d="M13 13l4 4" stroke="currentColor" strokeWidth="2" strokeLinecap="round" /></svg>
@@ -262,14 +280,25 @@ export default function OrderApp({ menu: data, refCode }) {
       </div>
 
       {count > 0 && (
-        <div className="bagbar" inert={product || sheet || overlayMounted ? true : undefined}>
+        <motion.div className="bagbar" inert={product || sheet || overlayMounted ? true : undefined} initial={{ y: 90 }} animate={{ y: 0 }} transition={{ type: 'spring', stiffness: 380, damping: 32 }}>
           <button className="btn btn--primary btn--block" onClick={() => setSheet('bag')}>
-            <span className="bagbar__count num">{count}</span>
+            <motion.span key={count} className="bagbar__count num" initial={{ scale: 1.6 }} animate={{ scale: 1 }} transition={{ type: 'spring', stiffness: 500, damping: 18 }}>{count}</motion.span>
             <span>Ver sacola</span>
             <span className="num">{money(subtotal)}</span>
           </button>
-        </div>
+        </motion.div>
       )}
+
+      <div className="toast-area" role="status" aria-live="polite">
+        <AnimatePresence>
+          {toast && (
+            <motion.p key={toast.id} className="toast" initial={{ opacity: 0, y: 16, scale: 0.96 }} animate={{ opacity: 1, y: 0, scale: 1 }} exit={{ opacity: 0, y: 8 }} transition={{ duration: 0.2, ease: 'easeOut' }}>
+              <svg viewBox="0 0 20 20" width="18" height="18" aria-hidden="true"><circle cx="10" cy="10" r="9" fill="currentColor" opacity="0.18" /><path d="M6 10.5l2.6 2.6L14 7.6" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" /></svg>
+              {toast.text}
+            </motion.p>
+          )}
+        </AnimatePresence>
+      </div>
 
       <AnimatePresence mode="wait" initial={false} onExitComplete={() => { if (!product && !sheet) setOverlayMounted(false); }}>
       {product ? (
@@ -278,7 +307,7 @@ export default function OrderApp({ menu: data, refCode }) {
           item={product}
           canOrder={canOrder}
           onClose={() => setProduct(null)}
-          onAdd={(qty, notes) => { addToCart(product.id, qty, notes); setProduct(null); }}
+          onAdd={(qty, notes) => { addToCart(product.id, qty, notes); setToast({ id: Date.now(), text: `${qty}× ${product.name} na sacola` }); setProduct(null); }}
         />
       ) : sheet === 'bag' ? (
         <Sheet key="bag" title="Sua sacola" onClose={() => setSheet(null)}>

@@ -29,8 +29,18 @@ export default function StorePage() {
   }
   if (!menu) {
     return (
-      <main className="page">
-        <p className="muted">Carregando o cardápio…</p>
+      <main className="page skeleton-page" aria-busy="true">
+        <span className="sr-only">Carregando o cardápio…</span>
+        <div className="skeleton skeleton--cover" />
+        <div className="skeleton skeleton--title" />
+        <div className="skeleton skeleton--line" />
+        <div className="skeleton skeleton--search" />
+        {[0, 1, 2, 3].map((i) => (
+          <div key={i} className="skeleton-card">
+            <div className="skeleton-card__text"><div className="skeleton skeleton--line" /><div className="skeleton skeleton--short" /><div className="skeleton skeleton--price" /></div>
+            <div className="skeleton skeleton--photo" />
+          </div>
+        ))}
       </main>
     );
   }

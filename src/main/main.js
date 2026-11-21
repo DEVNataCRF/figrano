@@ -14,7 +14,7 @@ const { menuText, money } = require('./robo/format');
 const { statusAviso, reviewRequest } = require('./robo/avisos');
 const { SerialQueue, SendQueue } = require('./queues');
 const { WhatsApp } = require('./whatsapp');
-const { iconPng } = require('./icon');
+const { iconPng, alertDotPng } = require('./icon');
 const { startUpdater } = require('./updater');
 const { Platform } = require('./platform');
 const { ImageStore } = require('./images');
@@ -143,6 +143,8 @@ function alertSound(kind) {
 }
 
 function notify(title, body, target) {
+  // Com a Sil em outra janela, o ícone pisca na barra de tarefas até ela voltar ao app
+  if (win && !win.isDestroyed() && !win.isFocused()) win.flashFrame(true);
   if (SMOKE || !Notification.isSupported()) return;
   const notification = new Notification({ title, body, icon: nativeImage.createFromBuffer(iconPng(128)) });
   notification.on('click', () => {
@@ -549,6 +551,14 @@ const api = {
   },
   'handoffs:resolve': (id) => store.resolveHandoff(id),
 
+  // Pedidos novos esperando: bolinha vermelha no ícone da barra de tarefas e aviso na bandeja
+  'app:attention': ({ pending } = {}) => {
+    const count = Math.max(0, Math.floor(Number(pending) || 0));
+    if (!win || win.isDestroyed()) return;
+    if (process.platform === 'win32') win.setOverlayIcon(count ? nativeImage.createFromBuffer(alertDotPng(32)) : null, count ? `${count} pedido(s) novo(s)` : '');
+    else app.setBadgeCount(count);
+    tray?.setToolTip(count ? `Figrano · ${count} pedido(s) novo(s)` : 'Figrano');
+  },
   'wa:layout': (bounds) => whatsapp?.layout(bounds),
   'wa:reload': () => whatsapp?.reload(),
   'wa:pause': (chatId, duration) => store.pauseChat(chatId, duration),
@@ -692,6 +702,8 @@ function createWindow() {
 
   loadPanel();
   win.once('ready-to-show', () => { if (!SMOKE) { win.maximize(); win.show(); } });
+
+  win.on('focus', () => win.flashFrame(false));
 
   // Fechar esconde na bandeja: o robô continua respondendo.
   win.on('close', (event) => {
