@@ -38,6 +38,7 @@ function fromApi(data) {
       pickup: c.acceptsPickup,
       pixOnline: Boolean(c.pixOnline?.enabled),
       rawHours: c.hours,
+      override: c.override || null,
       hours: DAY_NAMES.map((name, day) => {
         const slot = c.hours?.[String(day)];
         // Abrir e fechar no mesmo horário = o dia todo (é assim que a regra de aberto/fechado entende)
@@ -74,7 +75,12 @@ const initials = (name) => String(name).split(/\s+/).filter(Boolean).slice(0, 2)
 export default function OrderApp({ menu: data, refCode }) {
   const slug = `${data.companyName || 'loja'}:${data.whatsappPhone || ''}`;
   const { store, menu, canOrder, open, reason } = useMemo(() => fromApi(data), [data]);
-  const opening = useMemo(() => (open ? null : nextOpening(store.rawHours)), [open, store.rawHours]);
+  // Fechada mais cedo pelo atalho do painel: a próxima abertura conta depois desse fechamento
+  const opening = useMemo(() => {
+    if (open) return null;
+    const until = store.override?.mode === 'closed' ? Date.parse(store.override.until) : NaN;
+    return nextOpening(store.rawHours, Number.isFinite(until) && until > Date.now() ? new Date(until) : new Date());
+  }, [open, store.rawHours, store.override]);
   useEffect(() => { document.title = `${store.name} · Delivery`; }, [store.name]);
   const items = useMemo(() => {
     const map = new Map();

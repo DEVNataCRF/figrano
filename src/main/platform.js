@@ -336,6 +336,8 @@ class Platform {
       address: c.pickupAddress || local.address,
       phone: menu.whatsappPhone || local.phone,
       hours: c.enabled ? c.hours : Object.fromEntries([0, 1, 2, 3, 4, 5, 6].map((d) => [d, { closed: true, open: '00:00', close: '00:00' }])),
+      // Atalho "abrir/fechar agora" do painel (vale até override.until)
+      override: c.override || null,
       deliveryFee: c.deliveryFee,
       neighborhoods: Array.isArray(c.neighborhoods) ? c.neighborhoods : [],
       minOrder: c.minOrder,

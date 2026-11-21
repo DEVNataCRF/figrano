@@ -33,6 +33,16 @@ function isOpen(hours, date = new Date()) {
   return false;
 }
 
+/**
+ * Aberta agora, contando o atalho "abrir/fechar agora" do painel (store.override, até uma hora).
+ * Sem atalho valendo, segue o horário da semana.
+ */
+function storeOpen(store, date = new Date()) {
+  const o = store?.override;
+  if (o && (o.mode === 'open' || o.mode === 'closed') && Date.parse(o.until) > date.getTime()) return o.mode === 'open';
+  return isOpen(store?.hours, date);
+}
+
 /** Todos os dias marcados como fechados (delivery pausado). */
 function allClosed(hours) {
   return [0, 1, 2, 3, 4, 5, 6].every((day) => !hours?.[day] || hours[day].closed);
@@ -126,6 +136,6 @@ function statusNotification(order, storeName) {
 
 module.exports = {
   allClosed,
-  money, isOpen, hoursText, menuText, cartText, cartTotal, orderSummary,
+  money, isOpen, storeOpen, hoursText, menuText, cartText, cartTotal, orderSummary,
   statusNotification, STATUS_LABELS,
 };

@@ -1,7 +1,7 @@
 'use strict';
 
 const {
-  money, isOpen, hoursText, allClosed, menuText, cartText, cartTotal, orderSummary, STATUS_LABELS,
+  money, isOpen, storeOpen, hoursText, allClosed, menuText, cartText, cartTotal, orderSummary, STATUS_LABELS,
 } = require('./format');
 const { parseFreeOrder } = require('./free-order');
 const { parseReview, reviewThanks } = require('./avisos');
@@ -406,7 +406,7 @@ class BotEngine {
     if (hasAny(text, INTENTS.list) && session.state === 'idle') { this.startOrderingByChat(session, out); return true; }
     if (text === '1' || hasAny(text, INTENTS.menu)) { this.startOrdering(session, out); return true; }
     if (text === '2' || hasAny(text, INTENTS.hours)) {
-      const open = isOpen(store.hours, this.now());
+      const open = storeOpen(store, this.now());
       out.replies.push(`${open ? 'Estamos abertos agora.' : 'Estamos fechados agora.'}\n\n${hoursText(store.hours)}`);
       return true;
     }
@@ -429,7 +429,7 @@ class BotEngine {
     const nameOk = /^[\p{L}][\p{L}'-]*$/u.test(first);
     const hello = nameOk ? `Olá, ${first.charAt(0).toLocaleUpperCase('pt-BR')}${first.slice(1)}!` : 'Olá!';
     const link = this.onlineLink(session.chatId);
-    if (!isOpen(store.hours, this.now())) {
+    if (!storeOpen(store, this.now())) {
       // Fechado: avisa logo na saudação (antes o cliente só descobria ao tentar pedir)
       out.replies.push(
         `${hello} Aqui é o atendimento do ${store.name}.\n\n`
@@ -468,7 +468,7 @@ class BotEngine {
   /** Avisa que a loja está fechada (no máximo uma vez a cada 30 min). Devolve true se fechada. */
   blockIfClosed(session, out) {
     const store = this.store.settings.store;
-    if (isOpen(store.hours, this.now())) return false;
+    if (storeOpen(store, this.now())) return false;
     const nowMs = this.now().getTime();
     if (nowMs - session.closedNoticeAt > CLOSED_NOTICE_GAP_MS) {
       session.closedNoticeAt = nowMs;
@@ -917,7 +917,7 @@ Se preferir pedir por esta conversa, digite *lista*.`;
     if (session.mode === 'delivery' && !session.address) missing.push('endereço de entrega');
     if (!session.payment) missing.push('forma de pagamento');
     if (missing.length) return { ok: false, message: `Ainda falta: ${missing.join(', ')}.` };
-    if (!isOpen(store.hours, this.now())) return { ok: false, message: 'A loja está fechada no momento.' };
+    if (!storeOpen(store, this.now())) return { ok: false, message: 'A loja está fechada no momento.' };
     if (cartTotal(session.cart) < store.minOrder) return { ok: false, message: `O pedido mínimo é ${money(store.minOrder)}.` };
 
     let order;
