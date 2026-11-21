@@ -1,0 +1,10 @@
+# Cabeçalhos de segurança dos sites (lidos pelo Cloudflare Pages na publicação).
+# Ninguém pode exibir o site dentro de outro (clickjacking); HTTPS sempre; sem farejar tipo de
+# arquivo; o link de origem não vaza para outros sites; câmera/microfone/localização desligados.
+/*
+  Strict-Transport-Security: max-age=31536000; includeSubDomains
+  X-Frame-Options: DENY
+  Content-Security-Policy: frame-ancestors 'none'
+  X-Content-Type-Options: nosniff
+  Referrer-Policy: strict-origin-when-cross-origin
+  Permissions-Policy: camera=(), microphone=(), geolocation=(), payment=()

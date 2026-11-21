@@ -895,7 +895,8 @@ if (!app.requestSingleInstanceLock()) {
       if (!dir || host !== 'panel') return new Response('', { status: 404 });
       // Só arquivos dentro da pasta do painel
       const file = path.normalize(path.join(dir, decodeURIComponent(pathname)));
-      if (!file.startsWith(dir) || !fs.existsSync(file) || fs.statSync(file).isDirectory()) return new Response('', { status: 404 });
+      // Com o separador no fim: uma pasta vizinha "panel-backup" não passa por "dentro de panel"
+      if (!file.startsWith(dir + path.sep) || !fs.existsSync(file) || fs.statSync(file).isDirectory()) return new Response('', { status: 404 });
       return new Response(fs.readFileSync(file), { headers: { 'Content-Type': MIME[path.extname(file).toLowerCase()] || 'application/octet-stream' } });
     });
     protocol.handle('figrano-img', (request) => {
