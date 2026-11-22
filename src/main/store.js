@@ -3,6 +3,7 @@
 const fs = require('node:fs');
 const path = require('node:path');
 const { randomUUID } = require('node:crypto');
+const { HANDOFF_MESSAGE_DEFAULT, HANDOFF_MESSAGE_OLD } = require('./robo/saudacao');
 
 const ORDER_STATUSES = ['new', 'preparing', 'out', 'ready', 'done', 'canceled'];
 const BOT_STATUSES = ['active', 'alerts', 'inactive'];
@@ -36,7 +37,7 @@ function defaultData() {
       },
       bot: {
         status: 'active',
-        handoffMessage: 'Olá! Sou da equipe e vou continuar seu atendimento por aqui.',
+        handoffMessage: HANDOFF_MESSAGE_DEFAULT,
         autoPauseOnManualReply: true,
         autoArchive: false,
         archiveDays: 60,
@@ -116,6 +117,10 @@ class Store {
         if ((this.data.version ?? 1) < 2) {
           this.data.settings.ai.ollamaThink = false;
           this.data.version = 2;
+        }
+        // Saudação nova (22/11/2026): quem ainda tinha o texto padrão antigo recebe o novo; texto próprio fica
+        if (HANDOFF_MESSAGE_OLD.includes(String(this.data.settings.bot.handoffMessage || '').trim())) {
+          this.data.settings.bot.handoffMessage = HANDOFF_MESSAGE_DEFAULT;
         }
       } catch (error) {
         // Arquivo corrompido: guarda uma cópia e segue com dados novos.

@@ -12,6 +12,7 @@ const { BotEngine } = require('./robo/engine');
 const { AiResponder } = require('./ia/ai');
 const { menuText, money } = require('./robo/format');
 const { statusAviso, reviewRequest } = require('./robo/avisos');
+const { handoffGreeting } = require('./robo/saudacao');
 const { SerialQueue, SendQueue } = require('./queues');
 const { WhatsApp } = require('./whatsapp');
 const { iconPng, alertDotPng } = require('./icon');
@@ -616,7 +617,11 @@ const api = {
     // Buffet: o robô já ficou quieto por 24 h quando a festa chegou; atender não encurta isso
     store.pauseChat(handoff.chatId, handoff.area === 'buffet' ? '24h' : '2h');
     await whatsapp.call('openChat', handoff.chatId);
-    const greeting = store.settings.bot.handoffMessage.trim();
+    const greeting = handoffGreeting(store.settings.bot.handoffMessage, {
+      customerName: handoff.name,
+      ownerName: platform?.menu?.ownerName,
+      companyName: platform?.menu?.companyName || store.settings.store.name,
+    });
     if (greeting) sendToChat(handoff.chatId, [greeting], { respectsPause: false });
     store.resolveHandoff(id);
   },
