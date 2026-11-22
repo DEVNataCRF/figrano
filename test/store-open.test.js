@@ -17,3 +17,8 @@ test('atalho "fechar agora" fecha mesmo dentro do horário', () => {
   assert.equal(storeOpen({ hours: openAllDay }, now), true);
   assert.equal(storeOpen({ hours: openAllDay, override: { mode: 'closed', until: new Date(now.getTime() + 3600_000).toISOString() } }, now), false);
 });
+
+test('pausa (cozinha cheia) não deixa o robô fechar pedido', () => {
+  const openAllDay = Object.fromEntries([0, 1, 2, 3, 4, 5, 6].map((d) => [d, { closed: false, open: '00:00', close: '00:00' }]));
+  assert.equal(storeOpen({ hours: openAllDay, override: { mode: 'paused', until: new Date(now.getTime() + 900_000).toISOString() } }, now), false);
+});

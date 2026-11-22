@@ -39,7 +39,8 @@ function isOpen(hours, date = new Date()) {
  */
 function storeOpen(store, date = new Date()) {
   const o = store?.override;
-  if (o && (o.mode === 'open' || o.mode === 'closed') && Date.parse(o.until) > date.getTime()) return o.mode === 'open';
+  // Pausa (cozinha cheia) conta como fechada para pedidos pelo WhatsApp
+  if (o && ['open', 'closed', 'paused'].includes(o.mode) && Date.parse(o.until) > date.getTime()) return o.mode === 'open';
   return isOpen(store?.hours, date);
 }
 
