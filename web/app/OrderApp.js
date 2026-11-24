@@ -8,10 +8,13 @@ import StorePhoto from './StorePhoto.js';
 import { formatDeliveryAddress, restoreDeliveryContact } from '../lib/delivery-address.js';
 import { contactOf, neighborhoodsOf, streetsOf } from '../lib/store.js';
 import { nextOpening } from '../lib/hours.js';
+import { rememberOrder } from '../lib/orders.js';
+import { chosenIn, cleanPicks, groupRule, lineUnitPrice, missingRequired, optionLines, sameOptions } from '../lib/options.js';
 
 
 
 const cartKey = (slug) => `sabores:delivery:cart:${slug}`;
+const ordersKey = (slug) => `sabores:delivery:orders:${slug}`;
 const BUFFET_URL = process.env.NEXT_PUBLIC_BUFFET_URL || '';
 const DAY_NAMES = ['Domingo', 'Segunda', 'Terça', 'Quarta', 'Quinta', 'Sexta', 'Sábado'];
 
@@ -48,7 +51,7 @@ function fromApi(data) {
     menu: data.categories.map((category) => ({
       id: category.id,
       name: category.name,
-      items: category.items.map((item) => ({ ...item, description: item.description || '', photo: item.photoUrl || '', available: true })),
+      items: category.items.map((item) => ({ ...item, description: item.description || '', photo: item.photoUrl || '', optionGroups: item.optionGroups || [], available: true })),
     })),
     canOrder: data.acceptingOrders,
     open: data.open,
@@ -88,7 +91,7 @@ export default function OrderApp({ menu: data, refCode }) {
     return map;
   }, [menu]);
 
-  // Linha da sacola: { key, itemId, qty, notes }. Mesmo item com observação diferente vira outra linha.
+  // Linha da sacola: { key, itemId, qty, notes, options }. Mesmo item com observação ou adicionais diferentes vira outra linha.
   const [savedCart, setCart] = useState([]);
   const [cartStore, setCartStore] = useState(null);
   const cart = cartStore === slug ? savedCart : [];
@@ -99,7 +102,7 @@ export default function OrderApp({ menu: data, refCode }) {
   const [activeCat, setActiveCat] = useState(menu[0]?.id || '');
   const [overlayMounted, setOverlayMounted] = useState(false);
   const [toast, setToast] = useState(null);
-  // Bairro escolhido antes do fechamento: a taxa aparece desde o começo (e vem marcado no fechamento)
+  // Bairro do último fechamento: a sacola já mostra a taxa e o fechamento vem com ele marcado
   const [myBairro, setMyBairroState] = useState('');
   useEffect(() => { setMyBairroState(readStorage(`sabores:delivery:bairro:${slug}`, '')); }, [slug]);
   const setMyBairro = (name) => { setMyBairroState(name); writeStorage(`sabores:delivery:bairro:${slug}`, name); };
@@ -110,6 +113,15 @@ export default function OrderApp({ menu: data, refCode }) {
     if (!saved?.id || !saved?.suffix) return;
     setLastOrder({ ...saved, status: null });
     trackOrder(saved.id, saved.suffix).then((o) => setLastOrder({ ...saved, status: o.status })).catch(() => setLastOrder(null));
+  }, [slug]);
+  // "Meus pedidos": os pedidos feitos neste aparelho (o último, de antes da lista, entra nela)
+  const [myOrders, setMyOrders] = useState([]);
+  useEffect(() => {
+    let list = readStorage(ordersKey(slug), []);
+    if (!Array.isArray(list)) list = [];
+    const last = readStorage(`sabores:delivery:last:${slug}`, null);
+    if (last?.id && !list.some((o) => o?.id === last.id)) list = rememberOrder(list, last);
+    setMyOrders(list);
   }, [slug]);
   useEffect(() => {
     if (!toast) return;
@@ -138,10 +150,22 @@ export default function OrderApp({ menu: data, refCode }) {
 
   useEffect(() => {
     const saved = readStorage(cartKey(slug), []);
-    setCart(Array.isArray(saved) ? saved.filter((line) => items.get(line.itemId)?.available) : []);
+    // Sacola de outro dia: some o item que saiu e o adicional que mudou (a escolha precisa continuar valendo)
+    setCart(Array.isArray(saved) ? saved.flatMap((line) => {
+      const item = items.get(line.itemId);
+      if (!item?.available) return [];
+      const { picks, ok } = cleanPicks(item, line.options);
+      return ok ? [{ ...line, options: picks }] : [];
+    }) : []);
     setCartStore(slug);
   }, [slug, items]);
   useEffect(() => { if (cartStore === slug) writeStorage(cartKey(slug), savedCart); }, [slug, savedCart, cartStore]);
+  // Link de um produto (?produto=id): abre o detalhe dele direto
+  useEffect(() => {
+    const wanted = new URLSearchParams(window.location.search).get('produto');
+    const item = wanted && items.get(wanted);
+    if (item) setProduct(item);
+  }, [items]);
 
   // Destaca na barra a categoria que está na tela.
   // Depois de um clique na aba, a rolagem suave passa por outras seções: o destaque fica na escolhida.
@@ -191,16 +215,16 @@ export default function OrderApp({ menu: data, refCode }) {
       .filter((category) => category.items.length > 0);
   }, [menu, query]);
 
-  const addToCart = (itemId, qty, notes) => setCart((current) => {
+  const addToCart = (itemId, qty, notes, options = []) => setCart((current) => {
     const clean = notes.trim();
-    const line = current.find((l) => l.itemId === itemId && l.notes === clean);
+    const line = current.find((l) => l.itemId === itemId && l.notes === clean && sameOptions(l.options, options));
     if (line) return current.map((l) => (l === line ? { ...l, qty: Math.min(99, l.qty + qty) } : l));
-    return [...current, { key: `${itemId}-${Date.now()}`, itemId, qty, notes: clean }];
+    return [...current, { key: `${itemId}-${Date.now()}`, itemId, qty, notes: clean, options }];
   });
   const setQty = (key, qty) => setCart((current) => current.map((l) => (l.key === key ? { ...l, qty } : l)).filter((l) => l.qty > 0));
 
   const count = cart.reduce((n, l) => n + l.qty, 0);
-  const subtotal = cart.reduce((sum, l) => sum + l.qty * (items.get(l.itemId)?.price || 0), 0);
+  const subtotal = cart.reduce((sum, l) => sum + l.qty * lineUnitPrice(items.get(l.itemId), l.options), 0);
   const whatsapp = whatsappLink(store.whatsapp);
   const qtyInCart = (itemId) => cart.filter((l) => l.itemId === itemId).reduce((n, l) => n + l.qty, 0);
   // Toque rápido no cartão: soma 1 (sem observação) ou tira 1 da linha mais recente do produto
@@ -211,13 +235,19 @@ export default function OrderApp({ menu: data, refCode }) {
     let added = 0;
     for (const line of lines) {
       const item = items.get(line.itemId);
-      if (!item || !item.available) { missing.push(line.name); continue; }
-      addToCart(item.id, line.qty, line.notes || '');
+      const { picks, ok } = item?.available ? cleanPicks(item, line.options) : { picks: [], ok: false };
+      if (!item || !item.available || !ok) { missing.push(line.name); continue; }
+      addToCart(item.id, line.qty, line.notes || '', picks);
       added += line.qty;
     }
     setToast({ id: Date.now(), text: added ? `${added} ${added === 1 ? 'item voltou' : 'itens voltaram'} para a sacola, com o preço de hoje${missing.length ? `. Fora do cardápio hoje: ${missing.join(', ')}` : ''}` : 'Os itens desse pedido não estão no cardápio hoje.' });
   };
-  const quickAdd = (item) => { addToCart(item.id, 1, ''); setToast({ id: Date.now(), text: `1× ${item.name} na sacola` }); };
+  // Item com adicionais abre o detalhe: a pessoa vê (e escolhe) os molhos antes de pôr na sacola
+  const quickAdd = (item) => {
+    if (item.optionGroups.length) { setProduct(item); return; }
+    addToCart(item.id, 1, '');
+    setToast({ id: Date.now(), text: `1× ${item.name} na sacola` });
+  };
   const removeOne = (itemId) => {
     const line = [...cart].reverse().find((l) => l.itemId === itemId);
     if (line) setQty(line.key, line.qty - 1);
@@ -245,9 +275,12 @@ export default function OrderApp({ menu: data, refCode }) {
               </span>
               {facts.map((fact) => <span key={fact}>{fact}</span>)}
             </div>
-            <button type="button" className="link" onClick={() => setShowInfo((v) => !v)} aria-expanded={showInfo}>
-              {showInfo ? 'Ocultar informações' : 'Horários e endereço'}
-            </button>
+            <div className="hero__links">
+              <button type="button" className="link" onClick={() => setShowInfo((v) => !v)} aria-expanded={showInfo}>
+                {showInfo ? 'Ocultar informações' : 'Horários e endereço'}
+              </button>
+              {myOrders.length > 0 && <button type="button" className="link" onClick={() => setSheet('orders')}>Meus pedidos ({myOrders.length})</button>}
+            </div>
           </div>
         </div>
         {showInfo && (
@@ -260,7 +293,6 @@ export default function OrderApp({ menu: data, refCode }) {
           </div>
         )}
         {lastOrder && <LastOrderBanner order={lastOrder} items={items} canOrder={canOrder} onRepeat={repeatOrder} />}
-        {store.delivery && store.neighborhoods.length > 0 && <BairroPicker store={store} value={myBairro} onChange={setMyBairro} />}
         {!canOrder && (
           <p className="notice">
             {!open && opening ? `Estamos fechados agora. Abrimos ${opening.text}. Enquanto isso, dá para olhar o cardápio.` : reason || 'Estamos fechados agora. Dá para olhar o cardápio e pedir quando abrirmos.'}
@@ -383,13 +415,18 @@ export default function OrderApp({ menu: data, refCode }) {
           key={`product-${product.id}`}
           item={product}
           canOrder={canOrder}
-          onClose={() => setProduct(null)}
-          onAdd={(qty, notes) => { addToCart(product.id, qty, notes); setToast({ id: Date.now(), text: `${qty}× ${product.name} na sacola` }); setProduct(null); }}
+          onClose={() => { setProduct(null); clearProductLink(); }}
+          onShared={(text) => setToast({ id: Date.now(), text })}
+          onAdd={(qty, notes, picks) => { addToCart(product.id, qty, notes, picks); setToast({ id: Date.now(), text: `${qty}× ${product.name} na sacola` }); setProduct(null); clearProductLink(); }}
         />
       ) : sheet === 'bag' ? (
         <Sheet key="bag" title="Sua sacola" onClose={() => setSheet(null)}>
           <Bag cart={cart} items={items} setQty={setQty} subtotal={subtotal} store={store} canOrder={canOrder} bairro={myBairro}
             onCheckout={() => setSheet('checkout')} bare />
+        </Sheet>
+      ) : sheet === 'orders' ? (
+        <Sheet key="orders" title="Meus pedidos" onClose={() => setSheet(null)}>
+          <MyOrders orders={myOrders} />
         </Sheet>
       ) : sheet === 'checkout' ? (
         <Sheet key="checkout" title="Finalizar pedido" wide onClose={() => setSheet(null)}>
@@ -404,7 +441,7 @@ export default function OrderApp({ menu: data, refCode }) {
             onPlaced={(order, suffix) => {
               setCart([]);
               writeStorage(cartKey(slug), []);
-              window.location.href = `/pedido/?id=${encodeURIComponent(order.id)}&t=${suffix}`;
+              window.location.href = `/pedido/?id=${encodeURIComponent(order.id)}&t=${suffix}&novo=1`;
             }}
           />
         </Sheet>
@@ -471,10 +508,99 @@ function Sheet({ title, onClose, children, wide = false }) {
   );
 }
 
-function ProductSheet({ item, canOrder, onClose, onAdd }) {
+/** Grupo de adicionais no detalhe do produto (como "Molhos · Escolha até 3 itens"). */
+function OptionGroup({ group, picks, pickQty, onPick }) {
+  const [search, setSearch] = useState('');
+  const used = chosenIn(group, picks);
+  const full = used >= group.max;
+  const q = normalize(search.trim());
+  const shown = q ? group.options.filter((o) => normalize(o.name).includes(q)) : group.options;
+  const single = group.max === 1;
+  return (
+    <fieldset className="opt-group">
+      <legend className="opt-group__head">
+        <span className="opt-group__name">{group.name}</span>
+        <span className={`opt-group__rule${group.min > 0 && used < group.min ? ' opt-group__rule--need' : ''}`}>{groupRule(group)}{!single && used > 0 ? ` · ${used}/${group.max}` : ''}</span>
+      </legend>
+      {group.options.length > 8 && (
+        <label className="search opt-group__search">
+          <span className="sr-only">Buscar em {group.name}</span>
+          <input type="search" placeholder="Pesquise pelo nome" value={search} onChange={(e) => setSearch(e.target.value)} />
+        </label>
+      )}
+      <ul className="opt-group__list">
+        {shown.map((option) => {
+          const qty = pickQty(option.id);
+          const price = option.price ? `+ ${money(option.price)}` : 'Grátis';
+          return (
+            <li key={option.id} className={qty ? 'is-on' : ''}>
+              {single ? (
+                <label className="opt-row">
+                  <input type={group.min === 1 ? 'radio' : 'checkbox'} name={`opt-${group.id}`} checked={qty > 0}
+                    onChange={(e) => onPick(group, option.id, e.target.checked || group.min === 1 ? 1 : 0)} />
+                  <span className="opt-row__name">{option.name}</span>
+                  <span className="opt-row__price num">{price}</span>
+                </label>
+              ) : (
+                <div className="opt-row">
+                  <span className="opt-row__name">{option.name}<span className="opt-row__price num">{price}</span></span>
+                  {qty > 0 ? (
+                    <div className="stepper stepper--sm">
+                      <button type="button" onClick={() => onPick(group, option.id, qty - 1)} aria-label={`Tirar um ${option.name}`}>−</button>
+                      <span className="num">{qty}</span>
+                      <button type="button" disabled={full} onClick={() => onPick(group, option.id, qty + 1)} aria-label={`Mais um ${option.name}`}>+</button>
+                    </div>
+                  ) : (
+                    <button type="button" className="product__add opt-row__add" disabled={full} onClick={() => onPick(group, option.id, 1)} aria-label={`Adicionar ${option.name}`}>+</button>
+                  )}
+                </div>
+              )}
+            </li>
+          );
+        })}
+        {shown.length === 0 && <li className="muted">Nada com esse nome.</li>}
+      </ul>
+    </fieldset>
+  );
+}
+
+/** Tira o ?produto= do endereço ao fechar o detalhe (recarregar não reabre). */
+function clearProductLink() {
+  const url = new URL(window.location.href);
+  if (!url.searchParams.has('produto')) return;
+  url.searchParams.delete('produto');
+  window.history.replaceState(null, '', `${url.pathname}${url.search}${url.hash}`);
+}
+
+/** Link direto do produto: no celular abre o compartilhar do sistema; no computador copia. */
+async function shareProduct(item, onShared) {
+  const url = new URL(window.location.href);
+  url.search = '';
+  url.hash = '';
+  url.searchParams.set('produto', item.id);
+  const link = url.toString();
+  try {
+    if (navigator.share) { await navigator.share({ title: item.name, text: `${item.name} · ${money(item.price)}`, url: link }); return; }
+    await navigator.clipboard.writeText(link);
+    onShared('Link do produto copiado');
+  } catch (err) {
+    if (err?.name !== 'AbortError') onShared('Não deu para compartilhar agora');
+  }
+}
+
+function ProductSheet({ item, canOrder, onClose, onAdd, onShared = () => {} }) {
   const [qty, setQty] = useState(1);
   const [notes, setNotes] = useState('');
+  const [picks, setPicks] = useState([]);
   const panel = useSheetFocus(onClose, item.id);
+  const unit = lineUnitPrice(item, picks);
+  const missing = missingRequired(item, picks);
+  const pickQty = (optionId) => picks.find((p) => p.optionId === optionId)?.quantity || 0;
+  const setPick = (group, optionId, quantity) => setPicks((current) => {
+    // Grupo de uma escolha só: tocar em outra troca a escolhida
+    const base = group.max === 1 && quantity > 0 ? current.filter((p) => !group.options.some((o) => o.id === p.optionId)) : current.filter((p) => p.optionId !== optionId);
+    return quantity > 0 ? [...base, { optionId, quantity }] : base;
+  });
   const present = useIsPresent();
   const reduced = useReducedMotion();
   return (
@@ -482,6 +608,9 @@ function ProductSheet({ item, canOrder, onClose, onAdd }) {
       <motion.div ref={panel} tabIndex={-1} className="sheet__panel sheet__panel--product" role="dialog" aria-modal="true" aria-hidden={!present || undefined} aria-label={item.name} initial={{ y: reduced ? 0 : 16, opacity: 0 }} animate={{ y: 0, opacity: 1 }} exit={{ y: reduced ? 0 : 8, opacity: 0 }} transition={{ duration: reduced ? 0 : 0.2, ease: 'easeOut' }}>
         <button type="button" className="icon-btn icon-btn--float" onClick={onClose} aria-label="Fechar">
           <svg viewBox="0 0 20 20" width="20" height="20" aria-hidden="true"><path d="M5 5l10 10M15 5L5 15" stroke="currentColor" strokeWidth="2" strokeLinecap="round" /></svg>
+        </button>
+        <button type="button" className="icon-btn icon-btn--float icon-btn--share" onClick={() => shareProduct(item, onShared)} aria-label={`Compartilhar ${item.name}`}>
+          <svg viewBox="0 0 20 20" width="20" height="20" aria-hidden="true"><circle cx="15" cy="4.5" r="2.2" fill="none" stroke="currentColor" strokeWidth="1.8" /><circle cx="5" cy="10" r="2.2" fill="none" stroke="currentColor" strokeWidth="1.8" /><circle cx="15" cy="15.5" r="2.2" fill="none" stroke="currentColor" strokeWidth="1.8" /><path d="M7 9l6-3.4M7 11l6 3.4" stroke="currentColor" strokeWidth="1.8" /></svg>
         </button>
         {item.photo && <StorePhoto className="pd__img" src={item.photo} alt="" />}
         <div className="pd__body">
@@ -495,6 +624,7 @@ function ProductSheet({ item, canOrder, onClose, onAdd }) {
               {item.allergens && <div className="pd__allergens"><dt>Alergênicos</dt><dd>{item.allergens}</dd></div>}
             </dl>
           )}
+          {item.optionGroups.map((group) => <OptionGroup key={group.id} group={group} picks={picks} pickQty={pickQty} onPick={setPick} />)}
           <label className="field">Alguma observação?
             <textarea maxLength={140} placeholder="Ex.: bem sequinho, sem cebola…" value={notes} onChange={(e) => setNotes(e.target.value)} />
             <small>{notes.length}/140</small>
@@ -507,8 +637,10 @@ function ProductSheet({ item, canOrder, onClose, onAdd }) {
               <AnimatedQuantity value={qty} />
               <button type="button" onClick={() => setQty((q) => Math.min(99, q + 1))} aria-label="Mais um">+</button>
             </div>
-            <button type="button" className="btn btn--primary pd__add" onClick={() => onAdd(qty, notes)}>
-              <span>Adicionar</span><span className="num">{money(item.price * qty)}</span>
+            <button type="button" className="btn btn--primary pd__add" disabled={missing.length > 0} onClick={() => onAdd(qty, notes, picks)}>
+              {missing.length > 0
+                ? <span>Escolha: {missing.map((g) => g.name).join(', ')}</span>
+                : <><span>Adicionar</span><span className="num">{money(unit * qty)}</span></>}
             </button>
           </div>
         ) : (
@@ -541,8 +673,9 @@ function Bag({ cart, items, setQty, subtotal, store, canOrder, onCheckout, bare 
             <li key={line.key}>
               <div className="bag__line-text">
                 <span>{item.name}</span>
+                {optionLines(item, line.options).length > 0 && <small className="bag__options">+ {optionLines(item, line.options).join(', ')}</small>}
                 {line.notes && <small className="muted">{line.notes}</small>}
-                <span className="num">{money(item.price * line.qty)}</span>
+                <span className="num">{money(lineUnitPrice(item, line.options) * line.qty)}</span>
               </div>
               <div className="stepper stepper--sm">
                 <button type="button" onClick={() => setQty(line.key, line.qty - 1)} aria-label={`Tirar um ${item.name}`}>−</button>
@@ -607,7 +740,7 @@ function Checkout({ slug, refCode, store, items, cart, onPlaced, bairro = '', on
   const [editingContact, setEditingContact] = useState(true);
   useEffect(() => {
     const saved = restoreDeliveryContact(readStorage(`sabores:delivery:customer:${slug}`, {}));
-    // Bairro escolhido no topo vale mais que o salvo de um pedido antigo
+    // Bairro do último fechamento vale mais que o salvo de um pedido antigo
     if (bairro && bairro !== '__fora') saved.neighborhood = bairro;
     setForm(saved);
     // Dados completos de um pedido anterior: mostra o resumo; incompletos: abre os campos
@@ -620,7 +753,7 @@ function Checkout({ slug, refCode, store, items, cart, onPlaced, bairro = '', on
     if (key === 'neighborhood' && byNeighborhood) onBairro(value);
     setForm((f) => ({ ...f, [key]: value }));
   };
-  const subtotal = cart.reduce((sum, l) => sum + l.qty * (items.get(l.itemId)?.price || 0), 0);
+  const subtotal = cart.reduce((sum, l) => sum + l.qty * lineUnitPrice(items.get(l.itemId), l.options), 0);
   const chosen = store.neighborhoods.find((n) => n.name === form.neighborhood);
   const fee = mode !== 'delivery' ? 0 : byNeighborhood ? chosen?.fee ?? 0 : store.deliveryFee;
   const total = subtotal + fee;
@@ -650,20 +783,23 @@ function Checkout({ slug, refCode, store, items, cart, onPlaced, bairro = '', on
         paymentMethod: payment,
         changeFor: change && change > 0 ? change : null,
         notes: notes.trim() || null,
-        items: cart.map(({ itemId, qty, notes: lineNotes }) => ({ productId: itemId, quantity: qty, notes: lineNotes || null })),
+        items: cart.map(({ itemId, qty, notes: lineNotes, options }) => ({ productId: itemId, quantity: qty, notes: lineNotes || null, ...(options?.length ? { options } : {}) })),
         chatRef: refCode || null,
         idempotencyKey,
       });
       // O resumo fica neste aparelho para a página de acompanhamento
       writeStorage(`sabores:delivery:order:${order.id}`, {
         pixOnline: order.status === 'AWAITING_PIX',
-        items: cart.map((l) => ({ name: items.get(l.itemId)?.name, qty: l.qty, price: items.get(l.itemId)?.price, notes: l.notes })),
+        items: cart.map((l) => ({ name: items.get(l.itemId)?.name, qty: l.qty, price: lineUnitPrice(items.get(l.itemId), l.options), notes: l.notes, extras: optionLines(items.get(l.itemId), l.options) })),
         address: mode === 'delivery' ? fullAddress : '',
       });
-      writeStorage(`sabores:delivery:last:${slug}`, {
+      const entry = {
         id: order.id, number: order.number, suffix: form.phone.replace(/\D/g, '').slice(-4), createdAt: new Date().toISOString(),
-        items: cart.map((l) => ({ itemId: l.itemId, name: items.get(l.itemId)?.name, qty: l.qty, notes: l.notes })),
-      });
+        total: Number(order.total) || null, mode: order.mode,
+        items: cart.map((l) => ({ itemId: l.itemId, name: items.get(l.itemId)?.name, qty: l.qty, notes: l.notes, options: l.options || [] })),
+      };
+      writeStorage(`sabores:delivery:last:${slug}`, entry);
+      writeStorage(ordersKey(slug), rememberOrder(readStorage(ordersKey(slug), []), entry));
       onPlaced(order, form.phone.replace(/\D/g, '').slice(-4));
     } catch (err) {
       sendLock.current = false;
@@ -784,7 +920,7 @@ function Checkout({ slug, refCode, store, items, cart, onPlaced, bairro = '', on
 
       <section className="checkout__review" aria-label="Itens do pedido">
         <h3>Confira os itens</h3>
-        <ul>{cart.map(line => <li key={line.key}><span>{line.qty} × {items.get(line.itemId)?.name}{line.notes && <small>{line.notes}</small>}</span><strong className="num">{money(line.qty * (items.get(line.itemId)?.price || 0))}</strong></li>)}</ul>
+        <ul>{cart.map(line => { const item = items.get(line.itemId); const extras = optionLines(item, line.options); return <li key={line.key}><span>{line.qty} × {item?.name}{extras.length > 0 && <small>+ {extras.join(', ')}</small>}{line.notes && <small>{line.notes}</small>}</span><strong className="num">{money(line.qty * lineUnitPrice(item, line.options))}</strong></li>; })}</ul>
       </section>
       </div></div>
       {error && <p className="error" role="alert">{error}</p>}
@@ -800,31 +936,6 @@ function Checkout({ slug, refCode, store, items, cart, onPlaced, bairro = '', on
       </button>
       </div>
     </form>
-  );
-}
-
-/** Escolha do bairro logo no começo: o cliente sabe a taxa antes de montar a sacola. */
-function BairroPicker({ store, value, onChange }) {
-  const [open, setOpen] = useState(false);
-  const chosen = store.neighborhoods.find((n) => n.name === value);
-  if (chosen && !open) {
-    return (
-      <p className="bairro-picker bairro-picker--set">
-        <span>Entrega para <strong>{chosen.name}</strong>: <strong className="num">{chosen.fee ? money(chosen.fee) : 'grátis'}</strong></span>
-        <button type="button" className="link" onClick={() => setOpen(true)}>Trocar bairro</button>
-      </p>
-    );
-  }
-  return (
-    <label className="bairro-picker">
-      <span>Qual o seu bairro? Mostramos a taxa de entrega agora.</span>
-      <select value={value === '__fora' ? '__fora' : chosen ? chosen.name : ''} onChange={(e) => { onChange(e.target.value); setOpen(false); }}>
-        <option value="" disabled>Escolha o bairro</option>
-        {store.neighborhoods.map((n) => <option key={n.name} value={n.name}>{n.name} · {n.fee ? money(n.fee) : 'grátis'}</option>)}
-        <option value="__fora">Meu bairro não está na lista</option>
-      </select>
-      {value === '__fora' && <small>Ainda não entregamos no seu bairro{store.pickup ? ', mas dá para retirar na loja' : ''}.</small>}
-    </label>
   );
 }
 
@@ -853,5 +964,39 @@ function LastOrderBanner({ order, items, canOrder, onRepeat }) {
         {canOrder && available && <button type="button" className="btn btn--primary" onClick={onRepeat}>Pedir novamente</button>}
       </span>
     </div>
+  );
+}
+
+/** "Meus pedidos": os pedidos deste aparelho, com o andamento de cada um consultado na hora. */
+function MyOrders({ orders }) {
+  const [status, setStatus] = useState({});
+  useEffect(() => {
+    let alive = true;
+    for (const o of orders) {
+      trackOrder(o.id, o.suffix)
+        .then((t) => { if (alive) setStatus((s) => ({ ...s, [o.id]: t })); })
+        .catch(() => { if (alive) setStatus((s) => ({ ...s, [o.id]: null })); });
+    }
+    return () => { alive = false; };
+  }, [orders]);
+  return (
+    <ul className="my-orders">
+      {orders.map((o) => {
+        const t = status[o.id];
+        const when = o.createdAt ? new Date(o.createdAt).toLocaleString('pt-BR', { day: '2-digit', month: '2-digit', hour: '2-digit', minute: '2-digit' }) : '';
+        const names = (o.items || []).map((l) => `${l.qty}× ${l.name}`).join(', ');
+        const label = t === undefined ? 'Consultando…' : !t ? 'Indisponível' : t.status === 'DONE' ? 'Concluído' : t.status === 'CANCELED' ? 'Cancelado' : STATUS_LABEL[t.status] || 'Em andamento';
+        const total = t?.total ?? o.total;
+        return (
+          <li key={o.id}>
+            <a href={`/pedido/?id=${encodeURIComponent(o.id)}&t=${o.suffix}`}>
+              <span className="my-orders__top"><strong>Pedido #{o.number}</strong><span className="muted">{label}</span></span>
+              {names && <span className="my-orders__items">{names}</span>}
+              <span className="my-orders__meta muted num">{when}{total ? ` · ${money(total)}` : ''}</span>
+            </a>
+          </li>
+        );
+      })}
+    </ul>
   );
 }

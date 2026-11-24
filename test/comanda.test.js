@@ -41,3 +41,15 @@ test('escapa texto do cliente (nada de HTML vindo de fora)', () => {
   const html = receiptHtml({ ...base, notes: '<b>oi</b>' }, {});
   assert.ok(html.includes('&lt;b&gt;oi&lt;/b&gt;'));
 });
+
+test('comanda mostra os adicionais embaixo do item (por unidade quando o item tem mais de 1)', () => {
+  const html = receiptHtml({
+    ...base,
+    items: [
+      { name: 'Combo 50 salgados', qty: 1, price: 51, notes: '', options: [{ group: 'Molhos', name: 'Maionese', quantity: 2, price: 2 }] },
+      { name: 'Churros', qty: 2, price: 3, notes: '', options: [{ group: 'Recheio', name: 'Ninho', quantity: 1, price: 0.5 }] },
+    ],
+  }, { name: 'Sabores da Sil' }, '');
+  assert.match(html, /\+ 2x Maionese</);
+  assert.match(html, /\+ 1x Ninho em cada</);
+});

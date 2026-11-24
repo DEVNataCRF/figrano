@@ -1,9 +1,11 @@
 'use client';
 
 import { useEffect, useState } from 'react';
-import { money, whatsappLink, STATUS_STEPS } from '../../lib/format.js';
+import { money, whatsappLink } from '../../lib/format.js';
 import { PAYMENT_LABELS, fetchMenu, trackOrder } from '../../lib/api.js';
 import { contactOf } from '../../lib/store.js';
+import { continueText, etaOf, timelineOf } from '../../lib/orders.js';
+import StorePhoto from '../StorePhoto.js';
 
 const POLL_MS = 10000;
 
@@ -11,24 +13,43 @@ function readStorage(key) {
   try { return JSON.parse(window.localStorage.getItem(key) || 'null'); } catch { return null; }
 }
 
+const clock = (date) => date.toLocaleTimeString('pt-BR', { hour: '2-digit', minute: '2-digit' });
+
+/** Selo do cabeçalho: o nome curto da etapa de agora. */
+const BADGE = {
+  AWAITING_PIX: ['Aguardando Pix', 'wait'],
+  NEW: ['Aguardando confirmação', 'wait'],
+  PREPARING: ['Em preparo', 'work'],
+  OUT_FOR_DELIVERY: ['Saiu para entrega', 'work'],
+  READY_FOR_PICKUP: ['Pronto para retirar', 'work'],
+  DONE: ['Concluído', 'ok'],
+  CANCELED: ['Cancelado', 'off'],
+};
+
 /** Acompanhamento do pedido: status da loja a cada 10 s. */
-export default function Tracker({ id, suffix }) {
+export default function Tracker({ id, suffix, justPlaced = false }) {
   const [order, setOrder] = useState(null);
-  const [store, setStore] = useState({ name: 'Nossa loja', whatsapp: '', prepMinutes: 0, owner: '' });
+  const [store, setStore] = useState({ name: 'Nossa loja', whatsapp: '', prepMinutes: 0, owner: '', photos: new Map() });
   const who = contactOf(store.owner);
   const [error, setError] = useState('');
+  const [now, setNow] = useState(() => Date.now());
   const saved = typeof window !== 'undefined' ? readStorage(`sabores:delivery:order:${id}`) : null;
   const finished = order && (order.status === 'DONE' || order.status === 'CANCELED');
 
   useEffect(() => {
     fetchMenu()
-      .then((m) => setStore({ name: m.companyName, whatsapp: m.whatsappPhone, prepMinutes: m.config.prepMinutes, owner: m.ownerName || '' }))
+      .then((m) => {
+        // Fotos pelo nome do item: o pedido guarda o nome do dia em que foi feito
+        const photos = new Map();
+        for (const c of m.categories || []) for (const i of c.items || []) if (i.photoUrl) photos.set(i.name, i.photoUrl);
+        setStore({ name: m.companyName, whatsapp: m.whatsappPhone, prepMinutes: m.config.prepMinutes, owner: m.ownerName || '', photos });
+      })
       .catch(() => {});
   }, []);
 
   useEffect(() => {
     let timer;
-    const load = () => trackOrder(id, suffix).then((o) => { setOrder(o); setError(''); }).catch((err) => setError(err.message));
+    const load = () => trackOrder(id, suffix).then((o) => { setOrder(o); setError(''); setNow(Date.now()); }).catch((err) => setError(err.message));
     load();
     if (!finished) timer = setInterval(load, POLL_MS);
     return () => clearInterval(timer);
@@ -45,79 +66,136 @@ export default function Tracker({ id, suffix }) {
   }
   if (!order) return <main className="page"><p className="muted">Carregando seu pedido…</p></main>;
 
-  // Entrega e retirada têm caminhos diferentes depois do preparo; o passo do Pix só para quem pagou pelo site.
+  // O passo do Pix só para quem escolheu pagar pelo site
   const pixFlow = order.status === 'AWAITING_PIX' || Boolean(saved?.pixOnline);
-  const steps = STATUS_STEPS.filter(
-    (s) => (order.mode === 'DELIVERY' ? s.status !== 'READY_FOR_PICKUP' : s.status !== 'OUT_FOR_DELIVERY') && (pixFlow || s.status !== 'AWAITING_PIX'),
-  );
-  const current = steps.findIndex((s) => s.status === order.status);
+  const steps = timelineOf(order, pixFlow);
   const link = whatsappLink(store.whatsapp, `Olá! Sobre o pedido #${order.number}`);
-  // Previsão: hora do pedido + preparo (+15 min de entrega), no horário de quem está vendo
-  // Previsão: conta de quando a loja aceitou (ou do pedido, antes disso) + preparo (+15 min de entrega)
-  // + o atraso que a loja avisou. Recalcula a cada atualização (10 s).
+  const continueLink = whatsappLink(store.whatsapp, continueText(order.number));
   const delay = Number(order.delayMinutes) || 0;
-  const etaMinutes = store.prepMinutes > 0 ? store.prepMinutes + (order.mode === 'DELIVERY' ? 15 : 0) : 0;
-  const etaAt = etaMinutes && (order.acceptedAt || order.createdAt) ? new Date(new Date(order.acceptedAt || order.createdAt).getTime() + (etaMinutes + delay) * 60000) : null;
-  const eta = etaAt ? etaAt.toLocaleTimeString('pt-BR', { hour: '2-digit', minute: '2-digit' }) : '';
-  const late = Boolean(etaAt) && !finished && Date.now() > etaAt.getTime() + 5 * 60000;
-  const lines = order.items?.length ? order.items.map((i) => ({ name: i.name, qty: i.quantity, price: i.unitPrice, notes: i.notes })) : saved?.items || [];
+  const eta = !finished && !['NEW', 'AWAITING_PIX'].includes(order.status) ? etaOf(order, store.prepMinutes) : null;
+  const late = Boolean(eta) && now > eta.lateAfter.getTime();
+  const lines = order.items?.length
+    ? order.items.map((i) => ({ name: i.name, qty: i.quantity, price: i.unitPrice, notes: i.notes, extras: (i.options || []).map((o) => `${o.quantity}x ${o.name}`) }))
+    : saved?.items || [];
+  const subtotal = order.subtotal ?? lines.reduce((sum, l) => sum + l.qty * l.price, 0);
+  const [badge, tone] = BADGE[order.status] || [order.statusLabel || 'Em andamento', 'work'];
+  const pixOnline = order.paymentMethod === 'PIX' && pixFlow;
 
   return (
     <main className="page track">
-      <header className="store" style={{ borderBottom: 0, paddingBottom: 0 }}>
-        <p className="muted">{store.name}</p>
-        <h1>{order.status === 'CANCELED' ? 'Pedido cancelado' : `Pedido #${order.number}`}</h1>
-        {order.status === 'AWAITING_PIX' && <p className="muted">Falta só o Pix: pague e mande o comprovante no WhatsApp {who.da}.</p>}
-        {order.status === 'NEW' && <p className="muted">A loja vai confirmar em instantes. Você também recebe os avisos pelo WhatsApp.</p>}
-        {!finished && order.status !== 'NEW' && order.status !== 'AWAITING_PIX' && eta && (
-          <>
-            <p className={`eta${delay ? ' eta--delay' : ''}`}>{order.mode === 'DELIVERY' ? 'Previsão de chegada' : 'Pronto para retirar'}: <strong>por volta das {eta}</strong>{delay > 0 && <span className="eta__note">A loja avisou um atraso de {delay} min. Desculpe a espera!</span>}</p>
-            {late && <p className="eta eta--late" role="status">Está levando mais que o previsto. {link ? <a href={link}>Falar com {who.a} no WhatsApp</a> : 'Já já chega!'}</p>}
-          </>
-        )}
+      <header className="track__head">
+        <a className="icon-btn" href="/" aria-label="Voltar ao cardápio">
+          <svg viewBox="0 0 20 20" width="20" height="20" aria-hidden="true"><path d="M12.5 4.5L7 10l5.5 5.5" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" /></svg>
+        </a>
+        <div>
+          <p className="muted">{store.name}</p>
+          <h1>Pedido #{order.number}</h1>
+        </div>
+        <span className={`badge badge--${tone}`}>{badge}</span>
       </header>
 
-      {order.status === 'AWAITING_PIX' && order.pix && <PixBox pix={order.pix} number={order.number} />}
+      {justPlaced && order.status !== 'AWAITING_PIX' && order.status !== 'CANCELED' && (
+        <section className="card placed" aria-labelledby="placed-title">
+          <span className="placed__check" aria-hidden="true">
+            <svg viewBox="0 0 20 20" width="22" height="22"><path d="M5 10.5l3.2 3.2L15 7" fill="none" stroke="currentColor" strokeWidth="2.4" strokeLinecap="round" strokeLinejoin="round" /></svg>
+          </span>
+          <h2 id="placed-title">Pedido realizado!</h2>
+          <p className="muted">{who.A} já recebeu. Acompanhe o andamento aqui ou receba os avisos no WhatsApp.</p>
+          {continueLink && (
+            <a className="btn btn--whatsapp btn--block" href={continueLink}>
+              <WhatsAppIcon />
+              Continuar no WhatsApp
+            </a>
+          )}
+        </section>
+      )}
+
+      {order.status === 'AWAITING_PIX' && order.pix && <PixBox pix={order.pix} number={order.number} who={who} />}
 
       {order.status === 'CANCELED' ? (
-        <p className="error">A loja cancelou este pedido. {link && <a href={link}>Fale com {who.a} no WhatsApp</a>}</p>
+        <p className="error">{who.A} cancelou este pedido. {link && <a href={link}>Fale com {who.a} no WhatsApp</a>}</p>
       ) : (
-        <ol className="steps" aria-label="Andamento do pedido">
-          {steps.map((step, index) => (
-            <li key={step.status} data-state={index < current ? 'done' : index === current ? 'now' : 'next'} aria-current={index === current ? 'step' : undefined}>
-              <span className="steps__dot" aria-hidden="true">{index < current && <svg viewBox="0 0 16 16" width="12" height="12"><path d="M3.5 8.5l3 3 6-6.5" fill="none" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round" /></svg>}</span>
-              <span>{step.label}</span>
-            </li>
-          ))}
-        </ol>
+        <section className="card">
+          <h2>Status do pedido</h2>
+          {order.status === 'NEW' && <p className="muted">{who.A} vai confirmar em instantes. Os avisos também chegam no seu WhatsApp.</p>}
+          {eta && (
+            <p className={`eta${delay ? ' eta--delay' : ''}`}>
+              {eta.kind === 'window'
+                ? <>Previsão de entrega <strong>entre {clock(eta.from)} e {clock(eta.to)}</strong></>
+                : <>Pronto para retirar <strong>por volta das {clock(eta.from)}</strong></>}
+              {delay > 0 && <span className="eta__note">{who.A} avisou um atraso de {delay} min. Desculpe a espera!</span>}
+            </p>
+          )}
+          {late && <p className="eta eta--late" role="status">Está levando mais que o previsto. {link ? <a href={link}>Falar com {who.a} no WhatsApp</a> : 'Já já chega!'}</p>}
+          <ol className="steps" aria-label="Andamento do pedido">
+            {steps.map((step) => (
+              <li key={step.status} data-state={step.state} aria-current={step.state === 'now' ? 'step' : undefined}>
+                <span className="steps__dot" aria-hidden="true">{step.state === 'done' && <svg viewBox="0 0 16 16" width="12" height="12"><path d="M3.5 8.5l3 3 6-6.5" fill="none" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round" /></svg>}</span>
+                <span>{step.at && <time className="num" dateTime={step.at.toISOString()}>{clock(step.at)} · </time>}{step.label}</span>
+              </li>
+            ))}
+          </ol>
+        </section>
       )}
 
       <section className="card">
-        <h2>Resumo</h2>
-        {lines.map((line, index) => (
-          <div key={index} className="num" style={{ display: 'flex', justifyContent: 'space-between', gap: 12 }}>
-            <span>{line.qty}x {line.name}{line.notes ? <span className="muted"> ({line.notes})</span> : null}</span>
-            <span>{money(line.qty * line.price)}</span>
+        <h2>Detalhes do pedido</h2>
+        <div className="track__facts">
+          <div>
+            <strong>{order.mode === 'DELIVERY' ? 'Entrega' : 'Retirada no local'}</strong>
+            {order.mode === 'DELIVERY' && saved?.address && <span className="muted">{saved.address}</span>}
           </div>
-        ))}
+          <div>
+            <strong>{PAYMENT_LABELS[order.paymentMethod] || order.paymentMethod}</strong>
+            <span className="muted">
+              {pixOnline ? 'Pix pelo site, com comprovante no WhatsApp'
+                : order.paymentMethod === 'CASH' ? (order.changeFor ? `Troco para ${money(order.changeFor)}` : 'Sem troco')
+                : `Na ${order.mode === 'DELIVERY' ? 'entrega' : 'retirada'}`}
+            </span>
+          </div>
+        </div>
+        <h3 className="track__items-title">Itens do pedido</h3>
+        <ul className="track__items">
+          {lines.map((line, index) => {
+            const photo = store.photos.get(line.name);
+            return (
+              <li key={index}>
+                {photo ? <StorePhoto className="track__photo" src={photo} alt="" /> : <span className="track__photo track__photo--empty" aria-hidden="true" />}
+                <div>
+                  <p><strong>{line.qty} × {line.name}</strong></p>
+                  {line.extras?.length > 0 && (
+                    <div className="track__extras">
+                      <p className="muted">Adicionais{line.qty > 1 ? ' (em cada)' : ''}</p>
+                      <ul>{line.extras.map((e) => <li key={e}>{e}</li>)}</ul>
+                    </div>
+                  )}
+                  {line.notes && <p className="muted">Obs.: {line.notes}</p>}
+                  <p className="num">{money(line.qty * line.price)}</p>
+                </div>
+              </li>
+            );
+          })}
+        </ul>
         <div className="totals num">
-          {order.deliveryFee > 0 && <div><span>Entrega</span><span>{money(order.deliveryFee)}</span></div>}
+          <div><span>Subtotal</span><span>{money(subtotal)}</span></div>
+          {order.mode === 'DELIVERY' && <div><span>Taxa de entrega</span><span>{order.deliveryFee > 0 ? money(order.deliveryFee) : 'Grátis'}</span></div>}
           <div className="grand"><span>Total</span><span>{money(order.total)}</span></div>
         </div>
-        <p className="muted" style={{ fontSize: 14 }}>
-          {order.mode === 'DELIVERY' ? `Entrega${saved?.address ? ` em ${saved.address}` : ''}` : 'Retirada no local'} · {PAYMENT_LABELS[order.paymentMethod] || order.paymentMethod}
-          {order.changeFor ? ` (troco para ${money(order.changeFor)})` : ''}
-        </p>
       </section>
 
-      {link && <a className="btn btn--block" href={link}>Falar com {who.a} no WhatsApp</a>}
+      {link && <a className="btn btn--whatsapp btn--block" href={link}><WhatsAppIcon />Falar com {who.a} no WhatsApp</a>}
       <a className="btn btn--block" href="/">Voltar ao cardápio</a>
     </main>
   );
 }
 
+/** Ícone do WhatsApp dos botões verdes. */
+function WhatsAppIcon() {
+  return <svg className="wa-icon" viewBox="0 0 24 24" width="20" height="20" aria-hidden="true"><path fill="currentColor" d="M12 2a10 10 0 0 0-8.6 15.1L2 22l5-1.3A10 10 0 1 0 12 2Zm0 18.2c-1.5 0-3-.4-4.3-1.2l-.3-.2-3 .8.8-2.9-.2-.3A8.2 8.2 0 1 1 12 20.2Zm4.5-6.1c-.2-.1-1.5-.7-1.7-.8-.2-.1-.4-.1-.6.1l-.8 1c-.1.2-.3.2-.5.1a6.7 6.7 0 0 1-3.3-2.9c-.3-.4.2-.4.7-1.3.1-.2 0-.3 0-.4l-.8-1.8c-.2-.5-.4-.4-.6-.4h-.5a1 1 0 0 0-.7.3c-.2.3-.9.9-.9 2.2s1 2.6 1.1 2.7c.1.2 1.9 2.9 4.6 4 1.7.7 2.4.8 3.2.7.5-.1 1.5-.6 1.7-1.2.2-.6.2-1.1.1-1.2l-.5-.3Z" /></svg>;
+}
+
 /** Pix copia e cola + envio do comprovante. Sem o comprovante, o pedido não vai para a cozinha. */
-function PixBox({ pix, number }) {
+function PixBox({ pix, number, who }) {
   const [copied, setCopied] = useState(false);
   async function copy() {
     try {
@@ -134,7 +212,7 @@ function PixBox({ pix, number }) {
       <p className="pix__amount num">{money(pix.amount)}</p>
       <ol className="pix__steps">
         <li>Copie o código abaixo e cole no app do seu banco, em <b>Pix copia e cola</b>.</li>
-        <li>Mande o <b>comprovante</b> no WhatsApp {who.da}. Seu pedido #{number} só vai para a cozinha depois que ela receber.</li>
+        <li>Mande o <b>comprovante</b> no WhatsApp {who.da}. Seu pedido #{number} só vai para a cozinha depois que {who.a} receber.</li>
       </ol>
       <label className="field">
         Código Pix
@@ -145,4 +223,3 @@ function PixBox({ pix, number }) {
     </section>
   );
 }
-

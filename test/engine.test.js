@@ -185,6 +185,18 @@ test('status do pedido informa o último pedido do cliente', async () => {
   assert.match((await say('cadê meu pedido')).replies[0], /#1 está \*em produção\*/);
 });
 
+test('mensagem do botão "Continuar no WhatsApp" do site responde o status, mesmo com IA ligada', async () => {
+  const ai = { available: () => true, reply: async () => { throw new Error('não devia chamar a IA'); } };
+  const { say, store } = setup({ ai });
+  const order = store.createOrder({
+    customer: { chatId: CHAT, name: 'Ana' }, items: [{ name: 'Calabresa', qty: 1, price: 40 }], mode: 'pickup', payment: 'Pix',
+  });
+  store.setOrderStatus(order.id, 'preparing');
+  const { replies } = await say(`Oi! Acabei de fazer o pedido #${order.number} pelo site. Pode me avisar por aqui?`);
+  assert.equal(replies.length, 1);
+  assert.match(replies[0], /#1 está \*em produção\*/);
+});
+
 test('pausa expira sozinha', () => {
   const { store } = setup();
   const t0 = 1_000_000;

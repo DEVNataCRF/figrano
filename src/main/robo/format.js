@@ -85,7 +85,8 @@ function cartText(cart) {
   if (cart.length === 0) return 'Seu carrinho está vazio.';
   const lines = cart.map((line) => {
     const note = line.notes ? ` (${line.notes})` : '';
-    return `${line.qty}x ${line.name}${note} - ${money(line.qty * line.price)}`;
+    const extras = (line.options || []).length ? ` + ${line.options.map((o) => `${o.quantity}x ${o.name}`).join(', ')}` : '';
+    return `${line.qty}x ${line.name}${extras}${note} - ${money(line.qty * line.price)}`;
   });
   lines.push(`Subtotal: ${money(cartTotal(cart))}`);
   return lines.join('\n');

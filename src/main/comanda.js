@@ -73,7 +73,7 @@ function receiptHtml(order, store = {}, qrDataUrl = '') {
   const time = new Date(order.createdAt).toLocaleTimeString('pt-BR', { hour: '2-digit', minute: '2-digit' });
   const date = new Date(order.createdAt).toLocaleDateString('pt-BR', { day: '2-digit', month: '2-digit' });
   const items = order.items.map((line) => `
-    <div class="item"><b class="qty">${line.qty}x</b><div><b>${escapeHtml(line.name)}</b>${line.notes ? `<div class="note">» ${escapeHtml(line.notes)}</div>` : ''}</div></div>`).join('');
+    <div class="item"><b class="qty">${line.qty}x</b><div><b>${escapeHtml(line.name)}</b>${(line.options || []).map((o) => `<div class="note">+ ${o.quantity}x ${escapeHtml(o.name)}${line.qty > 1 ? ' em cada' : ''}</div>`).join('')}${line.notes ? `<div class="note">» ${escapeHtml(line.notes)}</div>` : ''}</div></div>`).join('');
 
   return `<!doctype html><meta charset="utf-8"><title>Pedido ${order.number}</title>
 <style>

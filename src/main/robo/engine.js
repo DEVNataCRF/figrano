@@ -335,6 +335,13 @@ class BotEngine {
       return true;
     }
 
+    // Botão "Continuar no WhatsApp" da página do pedido ("...fazer o pedido #214 pelo site...").
+    // Vem antes da leitura livre (que leria o 214 como item) e da IA: responde o status.
+    if (session.state === 'idle' && /pedido\s*#\s*\d+/i.test(rawText) && /pelo site/i.test(rawText)) {
+      this.orderStatus(session, out);
+      return true;
+    }
+
     // Pedido em frase livre ("10 coxinhas pra entregar na rua X, pago no pix"): o sistema lê
     // sem IA. Funciona igual com a IA desligada e não depende do modelo para anotar.
     // "50x4 quero experimentar esse churros": quantidade x número vale mais que a leitura livre

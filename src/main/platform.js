@@ -376,7 +376,7 @@ class Platform {
         name: order.customerName,
         phone: String(order.customerPhone || '').replace(/\D/g, ''),
       },
-      items: order.items.map((i) => ({ name: i.name, qty: i.quantity, price: i.unitPrice, notes: i.notes || '' })),
+      items: order.items.map((i) => ({ name: i.name, qty: i.quantity, price: i.unitPrice, notes: i.notes || '', options: Array.isArray(i.options) ? i.options : [] })),
       mode: order.mode === 'PICKUP' ? 'pickup' : 'delivery',
       address: order.address || '',
       neighborhood: order.neighborhood || '',
