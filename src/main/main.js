@@ -374,7 +374,7 @@ async function respond(chatId, msg) {
         'buffet',
       );
     } else if (effect.type === 'livia_error') {
-      console.error('[lívia]', effect.message);
+      console.error('[canela]', effect.message);
     } else if (effect.type === 'ai_error') {
       lastAiError = AiResponder.describeError({ message: effect.message });
       console.error('[ia]', effect.message);
@@ -929,8 +929,8 @@ if (!app.requestSingleInstanceLock()) {
     });
     botStore = connectedStore(store, platform);
     ai = new AiResponder({ store: botStore, getApiKey: readApiKey });
-    // WhatsApp só com o ROBÔ (decisão de 18/11/2026): sem IA no delivery e sem Lívia por aqui.
-    // A Lívia atende só no site do buffet; festa no WhatsApp recebe o link do orçamento e a Sil é avisada.
+    // WhatsApp só com o ROBÔ (decisão de 18/11/2026): sem IA no delivery e sem Canela por aqui.
+    // A Canela atende só no site do buffet; festa no WhatsApp recebe o link do orçamento e a Sil é avisada.
     // Para religar no futuro: passe `ai` e `livia: (input) => platform.askLivia(input)` de novo.
     engine = new BotEngine({
       store: botStore,

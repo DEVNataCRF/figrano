@@ -154,18 +154,18 @@ test('robô conectado: pedido confirmado vai para a API e o cliente recebe o nú
   assert.ok(out.replies.some((r) => r.includes('#8')), out.replies.join(' | '));
 });
 
-test('assunto de festa vai para a Lívia', async () => {
+test('assunto de festa vai para a Canela', async () => {
   const { store } = setup();
   const asked = [];
   const engine = new BotEngine({
     store,
-    livia: async (input) => { asked.push(input.message); return { reply: 'Oi! Sou a Lívia, do buffet.', link: 'http://buffet.test/#orcamento' }; },
+    livia: async (input) => { asked.push(input.message); return { reply: 'Oi! Sou a Canela, do buffet.', link: 'http://buffet.test/#orcamento' }; },
   });
   const out = await engine.handle({ chatId: 'a@c.us', phone: '5528999990000', type: 'chat', text: 'quero orçamento para festa de 80 convidados' });
   assert.equal(asked.length, 1);
-  assert.ok(out.replies[0].includes('Lívia'));
+  assert.ok(out.replies[0].includes('Canela'));
   assert.ok(out.replies.some((r) => r.includes('#orcamento')));
-  // A conversa segue com a Lívia até o cliente pedir o delivery
+  // A conversa segue com a Canela até o cliente pedir o delivery
   await engine.handle({ chatId: 'a@c.us', type: 'chat', text: 'e para dia 12 de dezembro?' });
   assert.equal(asked.length, 2);
 });

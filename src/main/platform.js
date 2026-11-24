@@ -537,15 +537,15 @@ class Platform {
     return `${this.siteUrl}/?r=${this.refFor(chatId)}`;
   }
 
-  /** Página de orçamento do site do buffet (onde a Lívia atende). */
+  /** Página de orçamento do site do buffet (onde a Canela atende). */
   buffetQuoteLink() {
     const site = String(this.settings.buffetUrl || '').replace(/\/+$/, '');
     return site ? `${site}/#orcamento` : '';
   }
 
-  // ------------------------------------------------------------------ Lívia
+  // ------------------------------------------------------------------ Canela
 
-  /** Assunto de festa: a Lívia (assistente do buffet) responde pela API. */
+  /** Assunto de festa: a Canela (assistente do buffet) responde pela API. */
   async askLivia({ message, history }) {
     if (!this.getToken()) return null;
     // O modelo local pode levar um tempo para "acordar": o cliente do WhatsApp espera

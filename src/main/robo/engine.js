@@ -58,7 +58,7 @@ const INTENTS = {
   address: ['endereco', 'onde fica', 'localizacao', 'como chegar'],
   menu: ['cardapio', 'menu', 'pedido', 'pedir', 'quero', 'opcoes', 'o que tem'],
   greeting: ['oi', 'ola', 'bom dia', 'boa tarde', 'boa noite', 'opa', 'e ai', 'eai'],
-  // Assunto de festa/buffet: quem responde é a Lívia (regras de preço e de data do buffet)
+  // Assunto de festa/buffet: quem responde é a Canela (regras de preço e de data do buffet)
   festa: ['festa', 'buffet', 'bufe', 'aniversario', 'casamento', 'evento', 'orcamento', 'formatura',
     'batizado', 'cha de bebe', 'cha de panela', 'cha revelacao', 'confraternizacao', 'convidados', 'encomenda'],
   delivery: ['delivery', 'cardapio do dia', 'entrega agora', 'pedir agora'],
@@ -68,7 +68,7 @@ const INTENTS = {
   menuLink: ['cardapio', 'menu', 'o que tem', 'o que voces tem', 'opcoes'],
 };
 
-const FESTA_TOPIC_MS = 30 * 60e3; // depois de falar de festa, a conversa segue com a Lívia por 30 min
+const FESTA_TOPIC_MS = 30 * 60e3; // depois de falar de festa, a conversa segue com a Canela por 30 min
 
 /**
  * Lê uma seleção de itens do cardápio numerado.
@@ -177,7 +177,7 @@ class BotEngine {
    * @param {() => Date} [deps.now]
    * @param {(chatId: string) => string|null} [deps.onlineLink] link da página de pedido, se ligada
    * @param {(input: {message: string, history: object[]}) => Promise<{reply: string, link?: string}|null>} [deps.livia]
-   *   Lívia, assistente do buffet (API do Sabores): responde tudo sobre festa
+   *   Canela, assistente do buffet (API do Sabores): responde tudo sobre festa
    */
   constructor({
     store, ai = null, now = () => new Date(), onlineLink = () => null, livia = null,
@@ -189,7 +189,7 @@ class BotEngine {
     this.trackingLink = trackingLink;
     /** Grava a nota do cliente na API: (orderId, rating, comment) => Promise */
     this.onReview = onReview;
-    /** Página de orçamento do site do buffet (WhatsApp só com o robô: a Lívia fica no site) */
+    /** Página de orçamento do site do buffet (WhatsApp só com o robô: a Canela fica no site) */
     this.buffetLink = buffetLink;
     this.ai = ai;
     this.now = now;
@@ -364,7 +364,7 @@ class BotEngine {
       default: break;
     }
 
-    // Festa e buffet: a Lívia responde (preço e data seguem as regras do buffet).
+    // Festa e buffet: a Canela responde (preço e data seguem as regras do buffet).
     // Depois do primeiro assunto de festa, a conversa fica com ela até o cliente pedir o delivery.
     const festaTopic = session.festaAt && this.now().getTime() - session.festaAt < FESTA_TOPIC_MS;
     // Depois de falar de festa, só segue como "detalhe da festa" o que tem cara de detalhe
@@ -980,10 +980,10 @@ Se preferir pedir por esta conversa, digite *lista*.`;
     return message;
   }
 
-  // ------------------------------------------------------------------ Lívia
+  // ------------------------------------------------------------------ Canela
 
   /**
-   * Festa/buffet. Com a Lívia ligada, ela responde; sem ela (padrão atual: WhatsApp só com o robô),
+   * Festa/buffet. Com a Canela ligada, ela responde; sem ela (padrão atual: WhatsApp só com o robô),
    * o robô manda o link do orçamento uma vez e avisa a Sil, que responde pessoalmente.
    */
   async askLivia(session, rawText, out) {
