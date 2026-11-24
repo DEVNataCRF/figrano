@@ -19,7 +19,10 @@ async function call(path, init) {
   }
   const data = await response.json().catch(() => ({}));
   if (!response.ok || data.success === false) {
-    throw new Error(data.error?.message || 'Não foi possível concluir agora. Tente de novo.');
+    const error = new Error(data.error?.message || 'Não foi possível concluir agora. Tente de novo.');
+    error.status = response.status;
+    error.code = data.error?.code || '';
+    throw error;
   }
   return data.data;
 }
@@ -38,3 +41,16 @@ export const placeOrder = (body) =>
 /** Acompanhar: precisa dos 4 últimos dígitos do WhatsApp usado no pedido. */
 export const trackOrder = (id, phoneSuffix) =>
   call(`/public/delivery/orders/${encodeURIComponent(id)}?phone=${encodeURIComponent(phoneSuffix)}`);
+
+const postJson = (path, body) =>
+  call(path, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body) });
+
+/** Entrar com o celular, passo 1: o código chega no WhatsApp (só para quem já pediu). */
+export const requestLoginCode = (phone) => postJson('/public/delivery/login/code', { phone });
+
+/** Passo 2: confere o código e devolve { token, name, phone, expiresInSeconds }. */
+export const verifyLoginCode = (phone, code) => postJson('/public/delivery/login/verify', { phone, code });
+
+/** Histórico de quem entrou: { customer, orders }. Token vencido → erro com status 401. */
+export const fetchMyOrders = (token) =>
+  call('/public/delivery/me/orders', { headers: { Authorization: `Bearer ${token}` } });

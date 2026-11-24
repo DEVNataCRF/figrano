@@ -40,6 +40,7 @@ function apiOrder(overrides = {}) {
 function fakeApi() {
   const calls = [];
   let orders = [];
+  let loginCodes = [];
   const fetch = async (url, init = {}) => {
     const path = url.replace('http://api.test/api/v1', '');
     const body = init.body ? JSON.parse(init.body) : null;
@@ -52,10 +53,12 @@ function fakeApi() {
       const created = apiOrder({ id: 'o-bot', number: 8, source: 'WHATSAPP', chatRef: body.chatRef });
       return ok(created, 201);
     }
+    if (path === '/delivery/login-codes/pending') return ok(loginCodes);
+    if (path.startsWith('/delivery/login-codes/') && init.method === 'POST') return ok({ updated: 1 });
     if (path === '/auth/me') return ok({ user: { id: 'u', name: 'Sil', role: 'OWNER_ADMIN' } });
     return { ok: false, status: 404, json: async () => ({ success: false, error: { message: 'não achei' } }) };
   };
-  return { fetch, calls, setOrders: (list) => { orders = list; } };
+  return { fetch, calls, setOrders: (list) => { orders = list; }, setLoginCodes: (list) => { loginCodes = list; } };
 }
 
 function setup() {
@@ -271,4 +274,19 @@ test('adoptSession aceita o formato antigo (só o token)', async () => {
   await platform.adoptSession('tok-velho');
   platform.stop();
   assert.ok(api.calls.some((c) => c.path === '/auth/me' && c.auth === 'Bearer tok-velho'));
+});
+
+test('código para entrar no site: cada um vira um envio só, e a API fica sabendo se saiu', async () => {
+  const { platform, events, api } = setup();
+  const job = { id: 'c1', phone: '(28) 99400-0077', message: 'Seu código para entrar no site do Sabores da Sil: *123456*' };
+  api.setLoginCodes([job]);
+  await platform.pollLoginCodes();
+  await platform.pollLoginCodes(); // a API ainda lista o mesmo código: não manda de novo
+  const sends = events.filter((e) => e.type === 'login_code');
+  assert.equal(sends.length, 1);
+  assert.deepEqual(sends[0].job, job);
+
+  await platform.reportLoginCode('c1', true);
+  const report = api.calls.find((c) => c.method === 'POST' && c.path === '/delivery/login-codes/c1/sent');
+  assert.deepEqual(report.body, { sent: true });
 });

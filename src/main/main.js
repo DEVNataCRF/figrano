@@ -403,6 +403,15 @@ async function onPlatformEvent(event) {
     push(event.type);
     return;
   }
+  if (event.type === 'login_code') {
+    // O cliente pediu para entrar no site com o celular: o código sai na hora, mesmo com o
+    // robô desligado ou a conversa pausada (foi a própria pessoa que pediu).
+    const { job } = event;
+    const chatId = whatsapp?.ready ? await chatIdFromPhone(job.phone) : '';
+    const result = chatId ? await sendToChat(chatId, [job.message], { respectsPause: false }) : { sent: 0 };
+    await platform.reportLoginCode(job.id, result.sent > 0);
+    return;
+  }
   const order = event.order;
   if (!order) return;
   const canMessage = store.settings.bot.status !== 'inactive';

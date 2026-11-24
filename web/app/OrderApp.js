@@ -5,6 +5,7 @@ import { AnimatePresence, MotionConfig, motion, useIsPresent, useReducedMotion }
 import { STATUS_STEPS, displayPhone, money, whatsappLink } from '../lib/format.js';
 import { PAYMENT_LABELS, placeOrder, trackOrder } from '../lib/api.js';
 import StorePhoto from './StorePhoto.js';
+import MyOrdersPanel from './MyOrders.js';
 import { formatDeliveryAddress, restoreDeliveryContact } from '../lib/delivery-address.js';
 import { contactOf, neighborhoodsOf, streetsOf } from '../lib/store.js';
 import { nextOpening } from '../lib/hours.js';
@@ -228,9 +229,8 @@ export default function OrderApp({ menu: data, refCode }) {
   const whatsapp = whatsappLink(store.whatsapp);
   const qtyInCart = (itemId) => cart.filter((l) => l.itemId === itemId).reduce((n, l) => n + l.qty, 0);
   // Toque rápido no cartão: soma 1 (sem observação) ou tira 1 da linha mais recente do produto
-  // Pedir de novo: só o que ainda está no cardápio, com o preço de hoje
-  const repeatOrder = () => {
-    const lines = lastOrder?.items || [];
+  // Pedir de novo (último pedido ou um do histórico): só o que ainda está no cardápio, com o preço de hoje
+  const repeatOrder = (lines = lastOrder?.items || []) => {
     const missing = [];
     let added = 0;
     for (const line of lines) {
@@ -241,6 +241,7 @@ export default function OrderApp({ menu: data, refCode }) {
       added += line.qty;
     }
     setToast({ id: Date.now(), text: added ? `${added} ${added === 1 ? 'item voltou' : 'itens voltaram'} para a sacola, com o preço de hoje${missing.length ? `. Fora do cardápio hoje: ${missing.join(', ')}` : ''}` : 'Os itens desse pedido não estão no cardápio hoje.' });
+    return added;
   };
   // Item com adicionais abre o detalhe: a pessoa vê (e escolhe) os molhos antes de pôr na sacola
   const quickAdd = (item) => {
@@ -279,7 +280,7 @@ export default function OrderApp({ menu: data, refCode }) {
               <button type="button" className="link" onClick={() => setShowInfo((v) => !v)} aria-expanded={showInfo}>
                 {showInfo ? 'Ocultar informações' : 'Horários e endereço'}
               </button>
-              {myOrders.length > 0 && <button type="button" className="link" onClick={() => setSheet('orders')}>Meus pedidos ({myOrders.length})</button>}
+              <button type="button" className="link" onClick={() => setSheet('orders')}>Meus pedidos{myOrders.length > 0 ? ` (${myOrders.length})` : ''}</button>
             </div>
           </div>
         </div>
@@ -292,7 +293,7 @@ export default function OrderApp({ menu: data, refCode }) {
             </div>
           </div>
         )}
-        {lastOrder && <LastOrderBanner order={lastOrder} items={items} canOrder={canOrder} onRepeat={repeatOrder} />}
+        {lastOrder && <LastOrderBanner order={lastOrder} items={items} canOrder={canOrder} onRepeat={() => repeatOrder()} />}
         {!canOrder && (
           <p className="notice">
             {!open && opening ? `Estamos fechados agora. Abrimos ${opening.text}. Enquanto isso, dá para olhar o cardápio.` : reason || 'Estamos fechados agora. Dá para olhar o cardápio e pedir quando abrirmos.'}
@@ -426,7 +427,8 @@ export default function OrderApp({ menu: data, refCode }) {
         </Sheet>
       ) : sheet === 'orders' ? (
         <Sheet key="orders" title="Meus pedidos" onClose={() => setSheet(null)}>
-          <MyOrders orders={myOrders} />
+          <MyOrdersPanel slug={slug} localOrders={myOrders} items={items} canOrder={canOrder}
+            onRepeat={(lines) => setSheet(repeatOrder(lines) ? 'bag' : null)} />
         </Sheet>
       ) : sheet === 'checkout' ? (
         <Sheet key="checkout" title="Finalizar pedido" wide onClose={() => setSheet(null)}>
@@ -967,36 +969,3 @@ function LastOrderBanner({ order, items, canOrder, onRepeat }) {
   );
 }
 
-/** "Meus pedidos": os pedidos deste aparelho, com o andamento de cada um consultado na hora. */
-function MyOrders({ orders }) {
-  const [status, setStatus] = useState({});
-  useEffect(() => {
-    let alive = true;
-    for (const o of orders) {
-      trackOrder(o.id, o.suffix)
-        .then((t) => { if (alive) setStatus((s) => ({ ...s, [o.id]: t })); })
-        .catch(() => { if (alive) setStatus((s) => ({ ...s, [o.id]: null })); });
-    }
-    return () => { alive = false; };
-  }, [orders]);
-  return (
-    <ul className="my-orders">
-      {orders.map((o) => {
-        const t = status[o.id];
-        const when = o.createdAt ? new Date(o.createdAt).toLocaleString('pt-BR', { day: '2-digit', month: '2-digit', hour: '2-digit', minute: '2-digit' }) : '';
-        const names = (o.items || []).map((l) => `${l.qty}× ${l.name}`).join(', ');
-        const label = t === undefined ? 'Consultando…' : !t ? 'Indisponível' : t.status === 'DONE' ? 'Concluído' : t.status === 'CANCELED' ? 'Cancelado' : STATUS_LABEL[t.status] || 'Em andamento';
-        const total = t?.total ?? o.total;
-        return (
-          <li key={o.id}>
-            <a href={`/pedido/?id=${encodeURIComponent(o.id)}&t=${o.suffix}`}>
-              <span className="my-orders__top"><strong>Pedido #{o.number}</strong><span className="muted">{label}</span></span>
-              {names && <span className="my-orders__items">{names}</span>}
-              <span className="my-orders__meta muted num">{when}{total ? ` · ${money(total)}` : ''}</span>
-            </a>
-          </li>
-        );
-      })}
-    </ul>
-  );
-}

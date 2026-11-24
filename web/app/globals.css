@@ -526,3 +526,25 @@ label.opt-row .opt-row__name { display: block; }
 .track__extras { margin: 2px 0; font-size: 14px; }
 .track__extras ul { margin: 0; padding-left: 18px; }
 .pd__add:disabled { opacity: 1; background: var(--line); border-color: var(--line); color: var(--muted); box-shadow: none; }
+
+/* ------------------------------------------------ entrar com o celular e histórico */
+.account { display: grid; gap: var(--s5); }
+.account__box { display: grid; gap: var(--s4); padding: var(--s4); border: 1px solid var(--line); border-radius: var(--r-card); background: var(--surface); }
+.account__box p { margin: 0; font-size: 14px; }
+.account__title { font-family: var(--font-display); font-size: 20px !important; font-weight: 800; color: var(--ink); margin-bottom: var(--s1) !important; }
+.account__code { font-size: 24px !important; letter-spacing: 0.3em; text-align: center; font-weight: 800; }
+.account__error { margin: 0; padding: var(--s2) var(--s3); border-radius: var(--r-control); background: var(--danger-soft); color: var(--danger); font-size: 14px; font-weight: 650; }
+.account__links { display: flex; flex-wrap: wrap; justify-content: space-between; gap: var(--s3); }
+.account__links .link:disabled { color: var(--muted); text-decoration: none; cursor: default; }
+.account__local { display: grid; gap: var(--s2); }
+.account__local h3 { margin: 0; font-size: 15px; color: var(--muted); }
+.account__who { display: flex; flex-wrap: wrap; align-items: baseline; justify-content: space-between; gap: var(--s2) var(--s3); }
+.account__who p { margin: 0; font-size: 15px; }
+.my-orders__card { display: grid; border: 1px solid var(--line); border-radius: var(--r-card); background: var(--surface); overflow: hidden; }
+.my-orders__card > a { border: 0; border-radius: 0; background: none; }
+.my-orders .my-orders__card > a:hover { border-color: transparent; background: var(--bg); }
+.my-orders__card--active { border-color: var(--ok); }
+.my-orders__status--active { color: var(--ok); font-weight: 800; }
+.my-orders__actions { display: flex; align-items: center; justify-content: space-between; gap: var(--s3); padding: var(--s2) var(--s4) var(--s3); font-size: 14px; }
+.my-orders__actions .btn { min-height: 40px; }
+.my-orders .my-orders__actions a.link { display: inline; padding: 0; border: 0; background: none; color: var(--accent); font-weight: 700; }

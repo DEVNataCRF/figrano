@@ -96,6 +96,8 @@ class Platform {
     this.timers = [];
     this.lastError = '';
     this.lastOkAt = 0;
+    this.loginCodesSeen = new Map(); // id do código → quando foi entregue ao WhatsApp (não manda duas vezes)
+    this.pollingCodes = false;
   }
 
   get settings() { return this.store.settings.platform; }
@@ -233,6 +235,7 @@ class Platform {
     this.timers.push(setInterval(() => this.pollOrders(), POLL_MS));
     this.timers.push(setInterval(() => this.heartbeat(), HEARTBEAT_MS));
     this.timers.push(setInterval(() => this.refreshMenu(), MENU_REFRESH_MS));
+    this.timers.push(setInterval(() => this.pollLoginCodes(), POLL_MS));
     this.heartbeat();
     this.refreshMenu();
     this.pollOrders();
@@ -320,6 +323,40 @@ class Platform {
       this.fail(error);
     } finally {
       this.polling = false;
+    }
+  }
+
+  /**
+   * "Entrar com o celular" no site: a API gera o código e este app, que tem o WhatsApp,
+   * manda. Cada código vira um evento `login_code` uma única vez; o main envia e chama
+   * `reportLoginCode` (a API apaga o código em texto).
+   */
+  async pollLoginCodes() {
+    if (!this.getToken() || this.pollingCodes) return;
+    this.pollingCodes = true;
+    try {
+      const jobs = await this.request('GET', '/delivery/login-codes/pending');
+      const now = Date.now();
+      // O código vale 10 min: depois disso o id não volta mais
+      for (const [id, at] of this.loginCodesSeen) if (now - at > 15 * 60e3) this.loginCodesSeen.delete(id);
+      for (const job of jobs || []) {
+        if (this.loginCodesSeen.has(job.id)) continue;
+        this.loginCodesSeen.set(job.id, now);
+        this.onEvent({ type: 'login_code', job });
+      }
+    } catch (error) {
+      // API antiga (sem a rota) ou sem rede: o ciclo dos pedidos já mostra a conexão
+      if (error?.status !== 404) this.fail(error);
+    } finally {
+      this.pollingCodes = false;
+    }
+  }
+
+  async reportLoginCode(id, sent) {
+    try {
+      await this.request('POST', `/delivery/login-codes/${encodeURIComponent(id)}/sent`, { sent: Boolean(sent) });
+    } catch (error) {
+      console.error('[sabores] falha ao confirmar envio do código:', error?.message || error);
     }
   }
 
