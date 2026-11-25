@@ -540,10 +540,10 @@ class Platform {
   }
 
   /** Página de orçamento do site do buffet (onde a Canela atende). */
-  /** Seção de Natal do site do buffet, só com encomendas abertas. */
+  /** Página de Natal do site do buffet, só com encomendas abertas. */
   natalLink() {
     const site = String(this.settings.buffetUrl || '').replace(/\/+$/, '');
-    return site && this.natal?.acceptingOrders ? `${site}/#natal` : '';
+    return site && this.natal?.acceptingOrders ? `${site}/natal` : '';
   }
 
   buffetQuoteLink() {

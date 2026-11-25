@@ -665,6 +665,17 @@ const api = {
     }
     return 'enviado';
   },
+  /** Manda um texto pronto do painel (ex.: encomenda de Natal confirmada + lembrete das vasilhas). */
+  'wa:sendText': async (phone, text) => {
+    if (!whatsapp?.ready) throw new Error('O WhatsApp não está conectado.');
+    const message = String(text || '').trim();
+    if (!message) throw new Error('Mensagem vazia.');
+    const chatId = await chatIdFromPhone(phone);
+    if (!chatId) throw new Error('Telefone inválido ou sem WhatsApp.');
+    const result = await sendToChat(chatId, [message.slice(0, 2000)], { respectsPause: false });
+    if (!result.sent) throw new Error(`Não foi possível enviar: ${result.error || 'WhatsApp indisponível'}`);
+    return 'enviado';
+  },
   /** Abre a conversa. `{ pause: '24h' }` deixa o robô quieto nela (chamado de buffet do site). */
   'wa:openChat': async (phoneOrChatId, options) => {
     if (!whatsapp?.ready) throw new Error('O WhatsApp não está conectado.');

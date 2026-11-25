@@ -27,3 +27,14 @@ export function displayPhone(raw) {
   if (d.length === 10) return `(${d.slice(0, 2)}) ${d.slice(2, 6)}-${d.slice(6)}`;
   return String(raw || '');
 }
+
+/**
+ * Descrição do item em linhas, para mostrar como lista ("450g de batata frita", "450g de frango").
+ * Cada linha digitada no painel vira um item; marcadores digitados ("-", "•", "*") saem.
+ */
+export function descriptionLines(text) {
+  return String(text || '')
+    .split(/\r?\n/)
+    .map((line) => line.replace(/^\s*[-–—•*]\s*/, '').trim())
+    .filter(Boolean);
+}

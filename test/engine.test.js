@@ -266,21 +266,30 @@ test('conversa @lid sem telefone conhecido fica sem telefone em vez de um númer
 test('Natal: com a temporada aberta, manda o link da seção de Natal (palavra inteira)', async () => {
   const store = new Store(null);
   store.updateSettings('store', { name: 'Cantina Teste', deliveryFee: 5, address: 'Rua A, 10' });
-  let link = 'http://buffet.test/#natal';
+  let link = 'http://buffet.test/natal';
   const engine = new BotEngine({ store, now: () => OPEN_TIME, natalLink: () => link });
   const say = (text) => engine.handle({ chatId: CHAT, name: 'Ana Souza', type: 'chat', text });
 
   const first = await say('Vocês fazem ceia de Natal?');
   assert.match(first.replies.join('\n'), /encomenda de Natal/);
-  assert.match(first.replies.join('\n'), /http:\/\/buffet\.test\/#natal/);
+  assert.ok(first.replies.join('\n').includes('http://buffet.test/natal'));
   const again = await say('e o chester, quanto é?');
   assert.equal(again.replies.length, 1);
   assert.match(again.replies[0], /^O cardápio e a encomenda de Natal ficam aqui/);
 
   // "Natália" não é Natal; temporada fechada = segue o fluxo normal
   const name = await say('Oi, aqui é a Natália');
-  assert.doesNotMatch(name.replies.join('\n'), /#natal/);
+  assert.ok(!name.replies.join('\n').includes('buffet.test/natal'));
   link = '';
   const closed = await say('tem ceia de natal?');
-  assert.doesNotMatch(closed.replies.join('\n'), /#natal/);
+  assert.ok(!closed.replies.join('\n').includes('buffet.test/natal'));
+});
+
+test('Natal: a resposta lembra das vasilhas etiquetadas e da entrada de 50%', async () => {
+  const store = new Store(null);
+  const engine = new BotEngine({ store, now: () => OPEN_TIME, natalLink: () => 'http://buffet.test/natal' });
+  const out = await engine.handle({ chatId: CHAT, name: 'Ana', type: 'chat', text: 'quero encomendar a ceia de natal' });
+  const text = out.replies.join('\n');
+  assert.match(text, /vasilhas ETIQUETADAS com o seu nome/);
+  assert.match(text, /50% de entrada/);
 });

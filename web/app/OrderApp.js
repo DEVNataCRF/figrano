@@ -2,11 +2,11 @@
 
 import { useEffect, useMemo, useRef, useState } from 'react';
 import { AnimatePresence, MotionConfig, motion, useIsPresent, useReducedMotion } from 'motion/react';
-import { STATUS_STEPS, displayPhone, money, whatsappLink } from '../lib/format.js';
+import { STATUS_STEPS, descriptionLines, displayPhone, money, whatsappLink } from '../lib/format.js';
 import { PAYMENT_LABELS, fetchNatal, placeOrder, trackOrder } from '../lib/api.js';
 import StorePhoto from './StorePhoto.js';
 import MyOrdersPanel from './MyOrders.js';
-import { formatDeliveryAddress, restoreDeliveryContact } from '../lib/delivery-address.js';
+import { checkoutProblem, formatDeliveryAddress, restoreDeliveryContact } from '../lib/delivery-address.js';
 import { contactOf, neighborhoodsOf, streetsOf } from '../lib/store.js';
 import { nextOpening } from '../lib/hours.js';
 import { rememberOrder } from '../lib/orders.js';
@@ -49,7 +49,11 @@ function fromApi(data) {
         return { name, text: !slot || slot.closed ? 'Fechado' : slot.open === slot.close ? 'Dia todo' : `${slot.open} às ${slot.close}` };
       }),
     },
-    menu: data.categories.map((category) => ({
+    menu: [
+      // Destaques no topo: escolhidos pela loja ou os mais pedidos (a API decide)
+      ...(data.featured?.length ? [{ id: 'mais-pedidos', name: '⭐ Mais pedidos', items: data.featured }] : []),
+      ...data.categories,
+    ].map((category) => ({
       id: category.id,
       name: category.name,
       items: category.items.map((item) => ({ ...item, description: item.description || '', photo: item.photoUrl || '', optionGroups: item.optionGroups || [], available: true })),
@@ -72,6 +76,33 @@ function readStorage(key, fallback) {
 
 function writeStorage(key, value) {
   try { window.localStorage.setItem(key, JSON.stringify(value)); } catch { /* sem armazenamento: segue em memória */ }
+}
+
+/** Rascunho do fechamento: some ao fechar o navegador, mas sobrevive a fechar a janela do pedido. */
+const draftKey = (slug) => `sabores:delivery:checkout-draft:${slug}`;
+function readDraft(slug) {
+  try { return JSON.parse(window.sessionStorage.getItem(draftKey(slug)) || 'null'); } catch { return null; }
+}
+function writeDraft(slug, value) {
+  try {
+    if (value) window.sessionStorage.setItem(draftKey(slug), JSON.stringify(value));
+    else window.sessionStorage.removeItem(draftKey(slug));
+  } catch { /* sem armazenamento: vale só enquanto a janela estiver aberta */ }
+}
+
+/**
+ * Fechar ao tocar fora da janela: só se o toque COMEÇOU e TERMINOU no fundo escuro.
+ * Selecionar texto num campo e soltar o mouse fora não fecha mais.
+ */
+function useBackdropDismiss(onClose, enabled = true) {
+  const startedOnBackdrop = useRef(false);
+  return {
+    onPointerDown: (event) => { startedOnBackdrop.current = event.target === event.currentTarget; },
+    onClick: (event) => {
+      if (enabled && startedOnBackdrop.current && event.target === event.currentTarget) onClose();
+      startedOnBackdrop.current = false;
+    },
+  };
 }
 
 const initials = (name) => String(name).split(/\s+/).filter(Boolean).slice(0, 2).map((w) => w[0]).join('').toUpperCase();
@@ -304,7 +335,7 @@ export default function OrderApp({ menu: data, refCode }) {
           </p>
         )}
         {natal && (
-          <a className="natal-link" href={`${BUFFET_URL}/#natal`}>
+          <a className="natal-link" href={`${BUFFET_URL}/natal`}>
             <span aria-hidden="true">🎄</span>
             <span><strong>Encomendas de Natal abertas</strong> · ceia, combos, pratos e chester para {natal.dates.map((d) => d.date.slice(8, 10) + '/' + d.date.slice(5, 7)).join(', ')}</span>
             <span className="natal-link__cta">Ver cardápio ›</span>
@@ -348,7 +379,7 @@ export default function OrderApp({ menu: data, refCode }) {
                       <button type="button" className="product__open" onClick={() => item.available && setProduct(item)} disabled={!item.available}>
                         <span className="product__text">
                           <span className="product__name">{inCart > 0 && <span className="product__count">{inCart}x</span>}{item.name}</span>
-                          {item.description && <span className="product__desc">{item.description}</span>}
+                          <CardDescription text={item.description} />
                           {(item.saleUnit || item.portionInfo) && <span className="product__unit">{[item.saleUnit && `Por ${item.saleUnit}`, item.portionInfo].filter(Boolean).join(' · ')}</span>}
                           <span className="product__price num">{item.available ? money(item.price) : 'Esgotado'}</span>
                           <span className="product__action" aria-hidden="true" />
@@ -441,7 +472,7 @@ export default function OrderApp({ menu: data, refCode }) {
             onRepeat={(lines) => setSheet(repeatOrder(lines) ? 'bag' : null)} />
         </Sheet>
       ) : sheet === 'checkout' ? (
-        <Sheet key="checkout" title="Finalizar pedido" wide onClose={() => setSheet(null)}>
+        <Sheet key="checkout" title="Finalizar pedido" wide dismissOnBackdrop={false} onClose={() => setSheet(null)}>
           <Checkout
             slug={slug}
             bairro={myBairro}
@@ -501,12 +532,13 @@ function useSheetFocus(onClose, focusKey) {
   return ref;
 }
 
-function Sheet({ title, onClose, children, wide = false }) {
+function Sheet({ title, onClose, children, wide = false, dismissOnBackdrop = true }) {
   const panel = useSheetFocus(onClose, title);
+  const backdrop = useBackdropDismiss(onClose, dismissOnBackdrop);
   const present = useIsPresent();
   const reduced = useReducedMotion();
   return (
-    <motion.div className="sheet" inert={!present ? true : undefined} initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }} transition={{ duration: reduced ? 0 : 0.16 }} onClick={(event) => { if (event.target === event.currentTarget) onClose(); }}>
+    <motion.div className="sheet" inert={!present ? true : undefined} initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }} transition={{ duration: reduced ? 0 : 0.16 }} {...backdrop}>
       <motion.div ref={panel} tabIndex={-1} className={`sheet__panel${wide ? ' sheet__panel--wide' : ''}`} role="dialog" aria-modal="true" aria-hidden={!present || undefined} aria-label={title} initial={{ y: reduced ? 0 : 16, opacity: 0 }} animate={{ y: 0, opacity: 1 }} exit={{ y: reduced ? 0 : 8, opacity: 0 }} transition={{ duration: reduced ? 0 : 0.2, ease: 'easeOut' }}>
         <div className="sheet__head">
           <h2>{title}</h2>
@@ -600,13 +632,33 @@ async function shareProduct(item, onShared) {
   }
 }
 
+/** Descrição no cartão do cardápio: em lista, um item embaixo do outro (até 3 + "e mais N"). */
+function CardDescription({ text }) {
+  const lines = descriptionLines(text);
+  if (lines.length === 0) return null;
+  if (lines.length === 1) return <span className="product__desc">{lines[0]}</span>;
+  const shown = lines.slice(0, 3);
+  return (
+    <span className="product__list">
+      {shown.map((line) => <span key={line} className="product__list-item">{line}</span>)}
+      {lines.length > shown.length && <span className="product__list-more">e mais {lines.length - shown.length}</span>}
+    </span>
+  );
+}
+
+const CheckIcon = () => (
+  <svg viewBox="0 0 20 20" width="18" height="18" aria-hidden="true"><circle cx="10" cy="10" r="9" fill="currentColor" opacity="0.15" /><path d="M6 10.5l2.6 2.6L14 7.6" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" /></svg>
+);
+
 function ProductSheet({ item, canOrder, onClose, onAdd, onShared = () => {} }) {
+  const backdrop = useBackdropDismiss(onClose);
   const [qty, setQty] = useState(1);
   const [notes, setNotes] = useState('');
   const [picks, setPicks] = useState([]);
   const panel = useSheetFocus(onClose, item.id);
   const unit = lineUnitPrice(item, picks);
   const missing = missingRequired(item, picks);
+  const lines = descriptionLines(item.description);
   const pickQty = (optionId) => picks.find((p) => p.optionId === optionId)?.quantity || 0;
   const setPick = (group, optionId, quantity) => setPicks((current) => {
     // Grupo de uma escolha só: tocar em outra troca a escolhida
@@ -616,31 +668,55 @@ function ProductSheet({ item, canOrder, onClose, onAdd, onShared = () => {} }) {
   const present = useIsPresent();
   const reduced = useReducedMotion();
   return (
-    <motion.div className="sheet" inert={!present ? true : undefined} initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }} transition={{ duration: reduced ? 0 : 0.16 }} onClick={(event) => { if (event.target === event.currentTarget) onClose(); }}>
-      <motion.div ref={panel} tabIndex={-1} className="sheet__panel sheet__panel--product" role="dialog" aria-modal="true" aria-hidden={!present || undefined} aria-label={item.name} initial={{ y: reduced ? 0 : 16, opacity: 0 }} animate={{ y: 0, opacity: 1 }} exit={{ y: reduced ? 0 : 8, opacity: 0 }} transition={{ duration: reduced ? 0 : 0.2, ease: 'easeOut' }}>
-        <button type="button" className="icon-btn icon-btn--float" onClick={onClose} aria-label="Fechar">
-          <svg viewBox="0 0 20 20" width="20" height="20" aria-hidden="true"><path d="M5 5l10 10M15 5L5 15" stroke="currentColor" strokeWidth="2" strokeLinecap="round" /></svg>
-        </button>
-        <button type="button" className="icon-btn icon-btn--float icon-btn--share" onClick={() => shareProduct(item, onShared)} aria-label={`Compartilhar ${item.name}`}>
-          <svg viewBox="0 0 20 20" width="20" height="20" aria-hidden="true"><circle cx="15" cy="4.5" r="2.2" fill="none" stroke="currentColor" strokeWidth="1.8" /><circle cx="5" cy="10" r="2.2" fill="none" stroke="currentColor" strokeWidth="1.8" /><circle cx="15" cy="15.5" r="2.2" fill="none" stroke="currentColor" strokeWidth="1.8" /><path d="M7 9l6-3.4M7 11l6 3.4" stroke="currentColor" strokeWidth="1.8" /></svg>
-        </button>
+    <motion.div className="sheet" inert={!present ? true : undefined} initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }} transition={{ duration: reduced ? 0 : 0.16 }} {...backdrop}>
+      <motion.div ref={panel} tabIndex={-1} className={`sheet__panel sheet__panel--product${item.photo ? '' : ' pd--sem-foto'}`} role="dialog" aria-modal="true" aria-hidden={!present || undefined} aria-label={item.name} initial={{ y: reduced ? 0 : 16, opacity: 0 }} animate={{ y: 0, opacity: 1 }} exit={{ y: reduced ? 0 : 8, opacity: 0 }} transition={{ duration: reduced ? 0 : 0.2, ease: 'easeOut' }}>
+        <div className="pd__actions">
+          <button type="button" className="icon-btn icon-btn--float" onClick={() => shareProduct(item, onShared)} aria-label={`Compartilhar ${item.name}`}>
+            <svg viewBox="0 0 20 20" width="20" height="20" aria-hidden="true"><circle cx="15" cy="4.5" r="2.2" fill="none" stroke="currentColor" strokeWidth="1.8" /><circle cx="5" cy="10" r="2.2" fill="none" stroke="currentColor" strokeWidth="1.8" /><circle cx="15" cy="15.5" r="2.2" fill="none" stroke="currentColor" strokeWidth="1.8" /><path d="M7 9l6-3.4M7 11l6 3.4" stroke="currentColor" strokeWidth="1.8" /></svg>
+          </button>
+          <button type="button" className="icon-btn icon-btn--float" onClick={onClose} aria-label="Fechar">
+            <svg viewBox="0 0 20 20" width="20" height="20" aria-hidden="true"><path d="M5 5l10 10M15 5L5 15" stroke="currentColor" strokeWidth="2" strokeLinecap="round" /></svg>
+          </button>
+        </div>
         {item.photo && <StorePhoto className="pd__img" src={item.photo} alt="" />}
         <div className="pd__body">
-          <h2>{item.name}</h2>
-          {item.description && <p className="muted">{item.description}</p>}
-          <p className="pd__price num">{money(item.price)}{item.saleUnit && <small className="pd__unit"> por {item.saleUnit}</small>}</p>
-          {(item.portionInfo || item.accompaniments || item.allergens) && (
+          <header className="pd__head">
+            <h2>{item.name}</h2>
+            <div className="pd__pricing">
+              <span className="pd__price num">{money(item.price)}</span>
+              {item.saleUnit && <span className="pd__chip">por {item.saleUnit}</span>}
+              {item.portionInfo && <span className="pd__chip">{item.portionInfo}</span>}
+            </div>
+          </header>
+
+          {lines.length > 1 ? (
+            <section className="pd__contents" aria-labelledby={`vem-${item.id}`}>
+              <h3 id={`vem-${item.id}`}>O que vem</h3>
+              <ul className="pd__list">
+                {lines.map((line) => <li key={line}><CheckIcon />{line}</li>)}
+              </ul>
+            </section>
+          ) : lines.length === 1 ? (
+            <p className="pd__desc">{lines[0]}</p>
+          ) : null}
+
+          {(item.accompaniments || item.allergens) && (
             <dl className="pd__facts">
-              {item.portionInfo && <div><dt>Tamanho</dt><dd>{item.portionInfo}</dd></div>}
               {item.accompaniments && <div><dt>Acompanha</dt><dd>{item.accompaniments}</dd></div>}
               {item.allergens && <div className="pd__allergens"><dt>Alergênicos</dt><dd>{item.allergens}</dd></div>}
             </dl>
           )}
+
           {item.optionGroups.map((group) => <OptionGroup key={group.id} group={group} picks={picks} pickQty={pickQty} onPick={setPick} />)}
-          <label className="field">Alguma observação?
-            <textarea maxLength={140} placeholder="Ex.: bem sequinho, sem cebola…" value={notes} onChange={(e) => setNotes(e.target.value)} />
-            <small>{notes.length}/140</small>
-          </label>
+
+          <details className="pd__note" open={notes.length > 0 || undefined}>
+            <summary>Adicionar observação</summary>
+            <label className="field">
+              <span className="sr-only">Observação do item</span>
+              <textarea maxLength={140} placeholder="Ex.: bem sequinho, sem cebola…" value={notes} onChange={(e) => setNotes(e.target.value)} />
+              <small>{notes.length}/140</small>
+            </label>
+          </details>
         </div>
         {canOrder ? (
           <div className="pd__foot">
@@ -750,19 +826,34 @@ function Checkout({ slug, refCode, store, items, cart, onPlaced, bairro = '', on
   const [sending, setSending] = useState(false);
 
   const [editingContact, setEditingContact] = useState(true);
+  const [draftReady, setDraftReady] = useState(false);
   useEffect(() => {
-    const saved = restoreDeliveryContact(readStorage(`sabores:delivery:customer:${slug}`, {}));
+    const draft = readDraft(slug);
+    const saved = restoreDeliveryContact(draft?.form ?? readStorage(`sabores:delivery:customer:${slug}`, {}));
     // Bairro do último fechamento vale mais que o salvo de um pedido antigo
-    if (bairro && bairro !== '__fora') saved.neighborhood = bairro;
+    if (!draft && bairro && bairro !== '__fora') saved.neighborhood = bairro;
     setForm(saved);
+    // O que a pessoa já tinha escolhido antes de fechar a janela volta igual
+    if (draft) {
+      if (draft.mode === 'delivery' || draft.mode === 'pickup') setMode(draft.mode);
+      if (store.payments.includes(draft.payment)) setPayment(draft.payment);
+      setChangeFor(draft.changeFor || '');
+      setNotes(draft.notes || '');
+    }
     // Dados completos de um pedido anterior: mostra o resumo; incompletos: abre os campos
     const hasAddress = saved.address.trim() && (saved.noNumber || saved.number.trim()) && saved.neighborhood.trim() && !saved.legacyAddress;
-    setEditingContact(!(saved.name.trim() && saved.phone.trim() && hasAddress));
+    setEditingContact(draft?.editingContact ?? !(saved.name.trim() && saved.phone.trim() && hasAddress));
+    setDraftReady(true);
   }, [slug]);
+  // Guarda o rascunho a cada mudança (fechar a janela ou recarregar a página não perde nada)
+  useEffect(() => {
+    if (draftReady) writeDraft(slug, { form, mode, payment, changeFor, notes, editingContact });
+  }, [draftReady, slug, form, mode, payment, changeFor, notes, editingContact]);
 
   const update = (key) => (event) => {
     const value = event.target.value;
     if (key === 'neighborhood' && byNeighborhood) onBairro(value);
+    setError('');
     setForm((f) => ({ ...f, [key]: value }));
   };
   const subtotal = cart.reduce((sum, l) => sum + l.qty * lineUnitPrice(items.get(l.itemId), l.options), 0);
@@ -780,7 +871,13 @@ function Checkout({ slug, refCode, store, items, cart, onPlaced, bairro = '', on
     event.preventDefault();
     if (sendLock.current) return;
     setError('');
-    if (mode === 'delivery' && !form.noNumber && !form.number.trim()) { setError('Informe o número do endereço ou marque “Sem número”.'); return; }
+    const problem = checkoutProblem({ mode, form });
+    if (problem) {
+      setError(problem);
+      // Algum campo dos dados está escondido no resumo: abre para corrigir
+      if (!editingContact && !problem.startsWith('Informe o número')) setEditingContact(true);
+      return;
+    }
     sendLock.current = true;
     setSending(true);
     try {
@@ -812,6 +909,7 @@ function Checkout({ slug, refCode, store, items, cart, onPlaced, bairro = '', on
       };
       writeStorage(`sabores:delivery:last:${slug}`, entry);
       writeStorage(ordersKey(slug), rememberOrder(readStorage(ordersKey(slug), []), entry));
+      writeDraft(slug, null);
       onPlaced(order, form.phone.replace(/\D/g, '').slice(-4));
     } catch (err) {
       sendLock.current = false;
@@ -935,7 +1033,6 @@ function Checkout({ slug, refCode, store, items, cart, onPlaced, bairro = '', on
         <ul>{cart.map(line => { const item = items.get(line.itemId); const extras = optionLines(item, line.options); return <li key={line.key}><span>{line.qty} × {item?.name}{extras.length > 0 && <small>+ {extras.join(', ')}</small>}{line.notes && <small>{line.notes}</small>}</span><strong className="num">{money(line.qty * lineUnitPrice(item, line.options))}</strong></li>; })}</ul>
       </section>
       </div></div>
-      {error && <p className="error" role="alert">{error}</p>}
       <div className="checkout__footer">
       <div className="totals num">
         <div><span>Subtotal</span><span>{money(subtotal)}</span></div>
@@ -943,6 +1040,8 @@ function Checkout({ slug, refCode, store, items, cart, onPlaced, bairro = '', on
         <div className="grand"><span>Total</span><span>{mode === 'delivery' && byNeighborhood && !chosen ? 'Escolha o bairro' : money(total)}</span></div>
       </div>
       <p className="checkout__legal">Seus dados servem só para este pedido e os avisos dele. <a href="/privacidade/" target="_blank" rel="noreferrer">Privacidade</a></p>
+      {/* Sempre à vista: logo acima do botão (antes ficava escondida no fim do formulário) */}
+      {error && <p className="error" role="alert">{error}</p>}
       <button className="btn btn--primary btn--block" disabled={sending || cart.length === 0}>
         {sending ? 'Enviando…' : mode === 'delivery' && byNeighborhood && !chosen ? 'Enviar pedido' : `Enviar pedido · ${money(total)}`}
       </button>

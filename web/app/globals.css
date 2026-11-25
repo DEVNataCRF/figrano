@@ -555,3 +555,34 @@ label.opt-row .opt-row__name { display: block; }
 .natal-link__cta { margin-left: auto; font-weight: 800; color: var(--yellow); }
 @media (min-width: 900px) { .natal-link { margin-left: var(--s6); margin-right: var(--s6); } }
 .natal-link > span:nth-child(2) { flex: 1 1 220px; min-width: 0; }
+
+/* ------------------------------------------------ item: descrição em lista e janela do produto */
+.product__list { display: grid; gap: 1px; font-size: 14px; color: var(--muted); }
+.product__list-item { display: block; padding-left: 14px; position: relative; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.product__list-item::before { content: ""; position: absolute; left: 2px; top: 0.6em; width: 5px; height: 5px; border-radius: 50%; background: var(--accent); }
+.product__list-more { font-size: 13px; font-weight: 700; color: var(--accent); padding-left: 14px; }
+
+.pd__actions { position: absolute; top: var(--s3); right: var(--s3); z-index: 2; display: flex; gap: var(--s2); }
+.pd__actions .icon-btn--float { position: static; }
+.sheet__panel--product .pd__img { aspect-ratio: 16 / 10; }
+.pd--sem-foto .pd__body { padding-top: 64px; }
+.pd__body { gap: var(--s4); }
+.pd__head { display: grid; gap: var(--s2); }
+.pd__head h2 { margin: 0; font-size: 26px; line-height: 1.15; padding-right: 0; }
+.pd--sem-foto .pd__head h2 { padding-right: 0; }
+.pd__pricing { display: flex; flex-wrap: wrap; align-items: center; gap: var(--s2); }
+.pd__pricing .pd__price { font-family: var(--font-display); font-size: 26px; font-weight: 800; color: var(--accent); }
+.pd__chip { display: inline-flex; align-items: center; min-height: 28px; padding: 0 var(--s3); border-radius: 99px; background: var(--bar); color: var(--ink); font-size: 13px; font-weight: 700; }
+.pd__desc { margin: 0; font-size: 15px; color: var(--muted); }
+.pd__contents { padding: var(--s3) var(--s4); border: 1px solid var(--line); border-radius: var(--r-card); background: var(--surface); }
+.pd__contents h3 { margin: 0 0 var(--s2); font-size: 13px; font-weight: 800; letter-spacing: 0.06em; text-transform: uppercase; color: var(--muted); }
+.pd__list { list-style: none; margin: 0; padding: 0; display: grid; gap: var(--s2); }
+.pd__list li { display: flex; align-items: flex-start; gap: var(--s2); font-size: 16px; font-weight: 650; color: var(--ink); }
+.pd__list li svg { flex: none; margin-top: 2px; color: var(--ok); }
+.pd__facts { margin: 0; }
+.pd__note { border-top: 1px solid var(--line); padding-top: var(--s3); }
+.pd__note summary { cursor: pointer; font-weight: 800; color: var(--accent); list-style: none; }
+.pd__note summary::-webkit-details-marker { display: none; }
+.pd__note summary::before { content: "+ "; }
+.pd__note[open] summary::before { content: "− "; }
+.pd__note .field { margin-top: var(--s2); }

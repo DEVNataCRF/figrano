@@ -24,3 +24,17 @@ test('reconhece sem número no formato antigo e ignora dados salvos inválidos',
   assert.equal(restoreDeliveryContact(null).address, '');
   assert.equal(restoreDeliveryContact({ address: 123 }).address, '');
 });
+
+test('fechamento: aponta o que falta antes de enviar', async () => {
+  const { checkoutProblem } = await import('./delivery-address.js');
+  const ok = { name: 'Ana', phone: '(28) 99917-7660', address: 'Rua das Flores', number: '120', complement: '', neighborhood: 'Centro', noNumber: false };
+  assert.equal(checkoutProblem({ mode: 'delivery', form: ok }), '');
+  assert.equal(checkoutProblem({ mode: 'pickup', form: { ...ok, address: '', number: '', neighborhood: '' } }), '');
+  assert.match(checkoutProblem({ mode: 'delivery', form: { ...ok, phone: '99917-7660' } }), /DDD/);
+  assert.match(checkoutProblem({ mode: 'delivery', form: { ...ok, phone: '+55 28 99917-7660' } }), /^$/);
+  assert.match(checkoutProblem({ mode: 'delivery', form: { ...ok, number: '' } }), /número/);
+  assert.equal(checkoutProblem({ mode: 'delivery', form: { ...ok, number: '', noNumber: true } }), '');
+  assert.match(checkoutProblem({ mode: 'delivery', form: { ...ok, address: 'R', number: '1' } }), /rua completo/);
+  assert.match(checkoutProblem({ mode: 'delivery', form: { ...ok, neighborhood: ' ' } }), /bairro/);
+  assert.match(checkoutProblem({ mode: 'delivery', form: { ...ok, name: ' ' } }), /nome/);
+});

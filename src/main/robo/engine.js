@@ -381,7 +381,9 @@ class BotEngine {
 O cardápio está aqui, com a ceia por pessoa, os combos, os pratos e o chester. É só escolher o dia e mandar:
 ${natal}
 
-A Sil confirma cada encomenda por aqui, com o valor final.`);
+A Sil confirma cada encomenda por aqui, com o valor final. A encomenda fica garantida com 50% de entrada.
+
+🏷️ Importante: leve suas vasilhas ETIQUETADAS com o seu nome.`);
       return true;
     }
 
