@@ -548,3 +548,10 @@ label.opt-row .opt-row__name { display: block; }
 .my-orders__actions { display: flex; align-items: center; justify-content: space-between; gap: var(--s3); padding: var(--s2) var(--s4) var(--s3); font-size: 14px; }
 .my-orders__actions .btn { min-height: 40px; }
 .my-orders .my-orders__actions a.link { display: inline; padding: 0; border: 0; background: none; color: var(--accent); font-weight: 700; }
+
+/* ------------------------------------------------ aviso das encomendas de Natal */
+.natal-link { display: flex; flex-wrap: wrap; align-items: center; gap: var(--s2) var(--s3); margin: var(--s3) var(--s4) 0; padding: var(--s3) var(--s4); border-radius: var(--r-card); background: #1E6B3C; color: #fff; font-size: 14px; text-decoration: none; }
+.natal-link strong { color: #fff; }
+.natal-link__cta { margin-left: auto; font-weight: 800; color: var(--yellow); }
+@media (min-width: 900px) { .natal-link { margin-left: var(--s6); margin-right: var(--s6); } }
+.natal-link > span:nth-child(2) { flex: 1 1 220px; min-width: 0; }

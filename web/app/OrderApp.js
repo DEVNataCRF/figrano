@@ -3,7 +3,7 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
 import { AnimatePresence, MotionConfig, motion, useIsPresent, useReducedMotion } from 'motion/react';
 import { STATUS_STEPS, displayPhone, money, whatsappLink } from '../lib/format.js';
-import { PAYMENT_LABELS, placeOrder, trackOrder } from '../lib/api.js';
+import { PAYMENT_LABELS, fetchNatal, placeOrder, trackOrder } from '../lib/api.js';
 import StorePhoto from './StorePhoto.js';
 import MyOrdersPanel from './MyOrders.js';
 import { formatDeliveryAddress, restoreDeliveryContact } from '../lib/delivery-address.js';
@@ -115,6 +115,9 @@ export default function OrderApp({ menu: data, refCode }) {
     setLastOrder({ ...saved, status: null });
     trackOrder(saved.id, saved.suffix).then((o) => setLastOrder({ ...saved, status: o.status })).catch(() => setLastOrder(null));
   }, [slug]);
+  // Encomendas de Natal abertas no buffet: aviso com link para a seção de Natal
+  const [natal, setNatal] = useState(null);
+  useEffect(() => { if (BUFFET_URL) fetchNatal().then((n) => setNatal(n?.acceptingOrders ? n : null)); }, []);
   // "Meus pedidos": os pedidos feitos neste aparelho (o último, de antes da lista, entra nela)
   const [myOrders, setMyOrders] = useState([]);
   useEffect(() => {
@@ -299,6 +302,13 @@ export default function OrderApp({ menu: data, refCode }) {
             {!open && opening ? `Estamos fechados agora. Abrimos ${opening.text}. Enquanto isso, dá para olhar o cardápio.` : reason || 'Estamos fechados agora. Dá para olhar o cardápio e pedir quando abrirmos.'}
             {whatsapp && <> <a href={whatsapp}>Falar no WhatsApp</a></>}
           </p>
+        )}
+        {natal && (
+          <a className="natal-link" href={`${BUFFET_URL}/#natal`}>
+            <span aria-hidden="true">🎄</span>
+            <span><strong>Encomendas de Natal abertas</strong> · ceia, combos, pratos e chester para {natal.dates.map((d) => d.date.slice(8, 10) + '/' + d.date.slice(5, 7)).join(', ')}</span>
+            <span className="natal-link__cta">Ver cardápio ›</span>
+          </a>
         )}
         {BUFFET_URL && <p className="festa-link">
           <span>{store.owner ? `Vai ter festa? ${contactOf(store.owner).A} também faz buffet e salgados por cento.` : 'Vai ter festa? Conheça também as opções de buffet e salgados por cento.'}</span>

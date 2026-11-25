@@ -937,6 +937,7 @@ if (!app.requestSingleInstanceLock()) {
       ai: null,
       livia: null,
       buffetLink: () => platform.buffetQuoteLink(),
+      natalLink: () => platform.natalLink(),
       onlineLink: (chatId) => platform.linkFor(chatId),
       trackingLink: (order) => platform.trackingLinkFor(order),
       onReview: (orderId, rating, comment) => platform.submitReview(orderId, rating, comment),

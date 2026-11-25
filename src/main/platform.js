@@ -275,6 +275,8 @@ class Platform {
   async refreshMenu() {
     try {
       this.menu = await this.request('GET', '/public/delivery/menu', null, { auth: false });
+      // Natal: o robô só manda o link com a temporada aberta (API antiga sem a rota = fechado)
+      this.natal = await this.request('GET', '/public/natal', null, { auth: false }).catch(() => null);
       this.ok();
       this.onEvent({ type: 'menu' });
     } catch (error) {
@@ -538,6 +540,12 @@ class Platform {
   }
 
   /** Página de orçamento do site do buffet (onde a Canela atende). */
+  /** Seção de Natal do site do buffet, só com encomendas abertas. */
+  natalLink() {
+    const site = String(this.settings.buffetUrl || '').replace(/\/+$/, '');
+    return site && this.natal?.acceptingOrders ? `${site}/#natal` : '';
+  }
+
   buffetQuoteLink() {
     const site = String(this.settings.buffetUrl || '').replace(/\/+$/, '');
     return site ? `${site}/#orcamento` : '';

@@ -30,6 +30,9 @@ async function call(path, init) {
 /** Cardápio, horário, regras e se a loja está recebendo pedidos agora. */
 export const fetchMenu = () => call('/public/delivery/menu');
 
+/** Encomendas de Natal do buffet (aberta ou não). Falhou = sem aviso. */
+export const fetchNatal = () => call('/public/natal').catch(() => null);
+
 /** Envia o pedido. A loja confere preço, taxa e mínimo do lado dela. */
 export const placeOrder = (body) =>
   call('/public/delivery/orders', {

@@ -68,6 +68,9 @@ const INTENTS = {
   menuLink: ['cardapio', 'menu', 'o que tem', 'o que voces tem', 'opcoes'],
 };
 
+/** Encomendas de Natal (palavra inteira: "Natália" não é Natal) */
+const NATAL_RE = /\b(natal|natalina|ceia|chester|ano novo|reveillon|fim de ano)\b/;
+
 const FESTA_TOPIC_MS = 30 * 60e3; // depois de falar de festa, a conversa segue com a Canela por 30 min
 
 /**
@@ -181,7 +184,7 @@ class BotEngine {
    */
   constructor({
     store, ai = null, now = () => new Date(), onlineLink = () => null, livia = null,
-    trackingLink = () => null, onReview = null, buffetLink = () => '',
+    trackingLink = () => null, onReview = null, buffetLink = () => '', natalLink = () => '',
   }) {
     this.store = store;
     this.livia = livia;
@@ -191,6 +194,8 @@ class BotEngine {
     this.onReview = onReview;
     /** Página de orçamento do site do buffet (WhatsApp só com o robô: a Canela fica no site) */
     this.buffetLink = buffetLink;
+    /** Seção de Natal do site do buffet; vazio = temporada fechada */
+    this.natalLink = natalLink;
     this.ai = ai;
     this.now = now;
     this.onlineLink = onlineLink;
@@ -362,6 +367,22 @@ class BotEngine {
       case 'change': return this.stateChange(session, text, out);
       case 'confirm': return this.stateConfirm(session, text, out);
       default: break;
+    }
+
+    // Natal com a temporada aberta: o link da seção de Natal (texto completo na 1ª vez, curto se repetir em 30 min)
+    const natal = NATAL_RE.test(text) ? this.natalLink() : '';
+    if (natal) {
+      const recent = session.natalAt && this.now().getTime() - session.natalAt < FESTA_TOPIC_MS;
+      session.natalAt = this.now().getTime();
+      out.replies.push(recent
+        ? `O cardápio e a encomenda de Natal ficam aqui: ${natal}`
+        : `Oba, encomenda de Natal! 🎄
+
+O cardápio está aqui, com a ceia por pessoa, os combos, os pratos e o chester. É só escolher o dia e mandar:
+${natal}
+
+A Sil confirma cada encomenda por aqui, com o valor final.`);
+      return true;
     }
 
     // Festa e buffet: a Canela responde (preço e data seguem as regras do buffet).
