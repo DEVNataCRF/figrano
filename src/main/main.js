@@ -18,7 +18,9 @@ const { SerialQueue, SendQueue } = require('./queues');
 const { WhatsApp } = require('./whatsapp');
 const { iconPng, alertDotPng } = require('./icon');
 const QRCode = require('qrcode');
-const { receiptHtml, mapsUrl } = require('./comanda');
+const { renderReceipt, customerKind, KINDS, paperOf, pageHeightMicrons } = require('./comanda');
+const { mapsUrl } = require('./comanda-dados');
+const { exampleOrder } = require('./comanda-exemplo');
 const { startUpdater } = require('./updater');
 const { Platform } = require('./platform');
 const { ImageStore } = require('./images');
@@ -402,7 +404,7 @@ async function chatOf(order) {
 const autoAccept = createAutoAccept({
   settings: () => store.settings.app,
   accept: (orderId) => platform.acceptOrder(orderId),
-  print: (apiOrder) => printOrder(platform.toLocal(apiOrder)),
+  print: (apiOrder) => printOrderCopies(platform.toLocal(apiOrder)),
   notify: (title, body) => notify(title, body, 'orders'),
   refresh: () => { platform.pollOrders().catch(() => {}); },
 });
@@ -627,13 +629,12 @@ const api = {
     platform.start();
   },
   // Comanda do pedido (o painel manda o pedido como veio da API)
-  'orders:print': (apiOrder) => printOrder(platform.toLocal(apiOrder)),
-  'orders:printTest': () => printOrder({
-    number: 0, mode: 'delivery', createdAt: Date.now(), customer: { name: 'Teste de impressão', phone: '5528999990000' },
-    items: [{ name: 'Coxinha (teste)', qty: 2, price: 3.5, notes: 'comanda de teste' }],
-    address: 'Rua de Teste, 100 - perto da praça', neighborhood: 'Centro', paymentMethod: 'CASH', payment: 'Dinheiro',
-    changeFor: 10, subtotal: 7, fee: 0, total: 7, notes: '',
-  }),
+  // Comanda do pedido (o painel manda o pedido como veio da API). Sem `kinds`, saem as vias
+  // escolhidas em Ajustes; com `kinds`, só aquelas (ex.: reimprimir só a da cozinha).
+  'orders:print': (apiOrder, kinds) => printOrderCopies(platform.toLocal(apiOrder), kinds),
+  // Teste e pré-visualização: pedido de exemplo marcado "COMANDA DE TESTE" (nunca vai para a API)
+  'orders:printTest': (kind = 'entrega') => printReceipt(kindOrThrow(kind), exampleOrder(kind)),
+  'orders:preview': async (kind = 'entrega', paperWidth) => receiptPage(kindOrThrow(kind), exampleOrder(kind), paperWidth),
   'printers:list': async () => (await win.webContents.getPrintersAsync()).map((p) => ({ name: p.name, displayName: p.displayName, isDefault: p.isDefault })),
 
   'handoffs:open': async (id) => {
@@ -720,30 +721,81 @@ function registerApi() {
 
 const escapeHtml = (text) => String(text ?? '').replace(/[&<>"']/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
 
-/** Comanda: layout em comanda.js (cozinha + entregador, com QR do mapa e quanto cobrar). */
-async function printOrder(order) {
-  if (!order) throw new Error('Pedido não encontrado.');
+function kindOrThrow(kind) {
+  if (!KINDS.includes(kind)) throw new Error('Modelo de comanda inválido.');
+  return kind;
+}
+
+/** Dados da loja que a comanda usa (nome, cidade, preparo) e a largura do papel escolhida. */
+function receiptStore(paperWidth) {
   const s = platform.storeSettings(store.settings.store);
   const menu = platform.menu || {};
-  const info = { name: s.name, city: menu.city || '', state: menu.state || '', pixOnline: Boolean(menu.config?.pixOnline?.enabled) };
-  let qr = '';
-  if (order.mode === 'delivery' && order.address) {
-    try { qr = await QRCode.toDataURL(mapsUrl(order, info), { margin: 1, width: 240, errorCorrectionLevel: 'M' }); } catch { /* sem QR, a comanda sai igual */ }
+  return {
+    name: s.name, city: menu.city || '', state: menu.state || '',
+    prepMinutes: Number(menu.config?.prepMinutes ?? s.prepMinutes) || 0,
+    paperWidth: paperOf(paperWidth ?? store.settings.app?.paperWidth).page,
+  };
+}
+
+/** HTML pronto de uma comanda (o mesmo da impressão: a pré-visualização mostra exatamente isto). */
+async function receiptPage(kind, order, paperWidth) {
+  const info = receiptStore(paperWidth);
+  let qrSvg = '';
+  if (kind === 'entrega' && order.mode === 'delivery' && order.address) {
+    // QR em vetor: sai nítido na resolução da térmica (sem esticar pixel). Margem = área de silêncio.
+    try { qrSvg = await QRCode.toString(mapsUrl(order, info), { type: 'svg', margin: 2, errorCorrectionLevel: 'M' }); } catch { /* sem QR, a comanda sai igual */ }
   }
-  const printer = new BrowserWindow({ show: false, webPreferences: { sandbox: true, javascript: false } });
-  printer.loadURL(`data:text/html;charset=utf-8,${encodeURIComponent(receiptHtml(order, info, qr))}`);
-  // Com impressora escolhida em Ajustes, sai direto (sem a janela do Windows)
-  const deviceName = store.settings.app?.printerName || '';
-  await new Promise((resolve, reject) => {
-    printer.webContents.once('did-finish-load', () => {
-      printer.webContents.print({ silent: Boolean(deviceName), deviceName: deviceName || undefined, printBackground: false }, (ok, reason) => {
-        printer.destroy();
+  return { html: renderReceipt(kind, order, info, qrSvg), paperWidth: info.paperWidth };
+}
+
+/**
+ * Imprime uma comanda. A janela tem a largura do papel; mede a altura do conteúdo e pede o
+ * papel exatamente desse tamanho (sem A4, sem margem do Windows, sem encolher, sem sobra
+ * em branco no fim). O avanço para o corte é da própria impressora.
+ */
+async function printReceipt(kind, order) {
+  if (!order) throw new Error('Pedido não encontrado.');
+  const { html, paperWidth } = await receiptPage(kind, order);
+  // JS ligado só para medir a altura; o HTML tem CSP sem script e o texto do cliente vem escapado
+  const printer = new BrowserWindow({
+    show: false, width: Math.round(paperWidth * 96 / 25.4), height: 800, useContentSize: true,
+    webPreferences: { sandbox: true, javascript: true, contextIsolation: true },
+  });
+  try {
+    await printer.loadURL(`data:text/html;charset=utf-8,${encodeURIComponent(html)}`);
+    const heightPx = await printer.webContents.executeJavaScript('Math.ceil(document.body.getBoundingClientRect().height)');
+    const deviceName = store.settings.app?.printerName || '';
+    await new Promise((resolve, reject) => {
+      printer.webContents.print({
+        // Com impressora escolhida em Ajustes, sai direto (sem a janela do Windows)
+        silent: Boolean(deviceName),
+        deviceName: deviceName || undefined,
+        printBackground: false,
+        margins: { marginType: 'none' }, // a margem lateral já está no desenho
+        pageSize: { width: paperWidth * 1000, height: pageHeightMicrons(heightPx) },
+        scaleFactor: 100,
+      }, (ok, reason) => {
         // Fechar a janela de imprimir não é erro; impressora escolhida que falhou é
         if (!ok && deviceName) reject(new Error(`Não consegui imprimir na impressora "${deviceName}" (${reason || 'sem resposta'}). Confira se ela está ligada.`));
         else resolve();
       });
     });
-  });
+  } finally {
+    if (!printer.isDestroyed()) printer.destroy();
+  }
+}
+
+
+/**
+ * Vias do pedido: a da cozinha (se ligada em Ajustes) e a de entrega ou retirada.
+ * `kinds` força quais saem (reimpressão de uma via só).
+ */
+async function printOrderCopies(order, kinds) {
+  if (!order) throw new Error('Pedido não encontrado.');
+  const wanted = Array.isArray(kinds) && kinds.length
+    ? kinds.map(kindOrThrow)
+    : [...(store.settings.app?.printProduction === false ? [] : ['producao']), customerKind(order)];
+  for (const kind of wanted) await printReceipt(kind, order);
 }
 
 // --------------------------------------------------------------------- janela

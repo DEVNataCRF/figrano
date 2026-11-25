@@ -64,6 +64,46 @@ No app desktop, use `http://127.0.0.1:3100` como servidor em Ajustes → Pedido 
 - **Controle por conversa:** na barra acima do WhatsApp dá para enviar o cardápio, lançar pedido e pausar o robô por 15 min, 1 h, 24 h ou até reativar. Responder um cliente manualmente pausa o robô nessa conversa por 15 min.
 - **Status geral do robô:** Ativo, Só avisos (não responde, mas envia status de pedido) e Desligado.
 
+## Comandas impressas
+
+Três modelos, montados com as mesmas peças (`src/main/comanda.js`; os dados prontos em
+`src/main/comanda-dados.js`):
+
+| Modelo | Para quem | Tem | Não tem |
+|---|---|---|---|
+| Produção | cozinha | número, horário, entrega/retirada, "pronto até", itens grandes, adicionais, observações | valores, endereço, pagamento, QR |
+| Entrega | entregador | bairro, endereço, telefone, itens com valor, resumo, o que cobrar, troco, QR com a rota | — |
+| Retirada | balcão | cliente, telefone, previsão, itens com valor, total, o que cobrar | endereço, QR |
+
+Ao aceitar (ou no aceite automático) saem a via de **produção** e a de **entrega/retirada**.
+Em Ajustes → Impressora da comanda dá para desligar a via da cozinha, trocar a largura do papel
+(80 ou 58 mm), ver a pré-visualização de cada modelo e imprimir um teste de cada um.
+
+**Pagamento:** a comanda segue a situação real. Pix só sai "PAGO · NÃO COBRAR" quando o
+comprovante foi conferido (o pedido saiu de "Aguardando comprovante"); escolher Pix não basta.
+Cartão e dinheiro sempre saem "COBRAR".
+
+**Como sai no papel:** a janela de impressão tem a largura do papel, a altura do conteúdo é
+medida e o papel é pedido nesse tamanho exato (`pageSize`), sem margem do Windows e sem
+reduzir. A margem lateral (4 mm no 80 mm, 5 mm no 58 mm) já está no desenho, dentro da área que
+a cabeça imprime (72 mm / 48 mm).
+
+### Configuração da impressora térmica (Windows)
+
+O app pede o papel do tamanho da comanda, mas alguns drivers ignoram e usam o papel que está
+configurado neles. Se sobrar papel em branco no fim ou a letra sair pequena:
+
+1. **Painel de Controle → Dispositivos e Impressoras →** botão direito na térmica →
+   **Preferências de impressão**.
+2. **Papel:** escolha o rolo, não um tamanho fixo. Nomes comuns: "Roll Paper 80 x 3276 mm",
+   "80mm x Receipt", "72mm x 3276mm" (58 mm: "58 x 3276 mm"). Evite "A4", "Carta" e
+   "80 x 297 mm" (estes geram a sobra em branco).
+3. **Corte/alimentação:** "Cortar ao fim do documento" (ou "Paper cut: Document"), e, se
+   existir, ligar "Redução de papel / Bottom margin reduction" ou "Economia de papel".
+4. **Escala:** 100% (sem "ajustar à página").
+5. No Figrano: Ajustes → Impressora da comanda → escolha a térmica e a largura e use
+   "Imprimir teste" em cada modelo.
+
 ## Estrutura
 
 ```
@@ -72,6 +112,10 @@ src/main/        processo principal
   store.js       dados em JSON (cardápio, pedidos, chamados, pausas, ajustes)
   queues.js      fila de recebimento e fila de envio por conversa
   whatsapp.js    visão embutida do WhatsApp Web
+  comanda.js     os três modelos de comanda impressa (HTML do papel)
+  comanda-dados.js  dados da comanda: pagamento pela situação real, previsão, endereço, QR
+  comanda-exemplo.js  pedido de exemplo da pré-visualização e do teste de impressão
+  auto-accept.js aceite automático com impressão
   bot/engine.js  regras e estado de cada conversa
   bot/ai.js      camada de IA (Claude, com ferramentas)
   bot/format.js  textos enviados ao cliente

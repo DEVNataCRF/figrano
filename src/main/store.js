@@ -59,7 +59,9 @@ function defaultData() {
       },
       // printerName: impressora da comanda (vazio = pergunta toda vez)
       // autoAccept: aceita e imprime sozinho cada pedido novo (a Sil trabalha sozinha na cozinha)
-      app: { autoStart: false, printerName: '', autoAccept: false },
+      // paperWidth: largura da bobina da térmica em mm (80 ou 58)
+      // printProduction: imprime também a via da cozinha (além da de entrega/retirada)
+      app: { autoStart: false, printerName: '', autoAccept: false, paperWidth: 80, printProduction: true },
       online: {
         enabled: false,
         apiUrl: '', // servidor da página de pedidos
