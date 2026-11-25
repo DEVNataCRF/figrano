@@ -12,6 +12,7 @@ const { BotEngine } = require('./robo/engine');
 const { AiResponder } = require('./ia/ai');
 const { menuText, money } = require('./robo/format');
 const { statusAviso, reviewRequest } = require('./robo/avisos');
+const { createAutoAccept } = require('./auto-accept');
 const { handoffGreeting } = require('./robo/saudacao');
 const { SerialQueue, SendQueue } = require('./queues');
 const { WhatsApp } = require('./whatsapp');
@@ -397,6 +398,16 @@ async function chatOf(order) {
  * Eventos da plataforma: pedido novo (site ou balcão) e mudança de status feita no painel.
  * O cliente é avisado no WhatsApp; a Sil, por notificação do Windows.
  */
+// Aceite automático: regra em auto-accept.js (testada); aqui só liga às peças do app
+const autoAccept = createAutoAccept({
+  settings: () => store.settings.app,
+  accept: (orderId) => platform.acceptOrder(orderId),
+  print: (apiOrder) => printOrder(platform.toLocal(apiOrder)),
+  notify: (title, body) => notify(title, body, 'orders'),
+  refresh: () => { platform.pollOrders().catch(() => {}); },
+});
+const autoAcceptAndPrint = (order) => autoAccept.handle(order);
+
 async function onPlatformEvent(event) {
   const push = (topic) => { if (win && !win.isDestroyed()) win.webContents.send('state:changed', topic); };
   if (event.type === 'orders' || event.type === 'menu' || event.type === 'session' || event.type === 'connection') {
@@ -435,7 +446,9 @@ async function onPlatformEvent(event) {
   if (event.type === 'order_new') {
     alertSound('pedido');
     const origin = order.source === 'online' ? 'pelo site' : order.source === 'manual' ? 'no balcão' : 'pelo WhatsApp';
-    notify(`Novo pedido #${order.number} ${origin}`, `${order.customer.name} · ${money(order.total)}`, 'orders');
+    const auto = order.status === 'new' && autoAccept.enabled();
+    notify(`Novo pedido #${order.number} ${origin}${auto ? ' · aceito e impresso' : ''}`, `${order.customer.name} · ${money(order.total)}`, 'orders');
+    if (auto) autoAcceptAndPrint(order).catch((error) => console.error('[sabores] aceite automático falhou:', error));
     if (order.source === 'online' && canMessage) {
       const chatId = await chatOf(order);
       if (chatId) {
@@ -460,6 +473,10 @@ async function onPlatformEvent(event) {
   }
 
   if (event.type === 'order_status') {
+    // Pix conferido: o pedido acabou de ficar "novo" e entra no aceite automático
+    if (event.previous === 'AWAITING_PIX' && order.status === 'new') {
+      autoAcceptAndPrint(order).catch((error) => console.error('[sabores] aceite automático falhou:', error));
+    }
     const link = platform.trackingLinkFor(order);
     const text = event.previous === 'AWAITING_PIX' && order.status === 'new'
       ? `Comprovante conferido! Seu pedido #${order.number} está confirmado.${link ? `\n\nAcompanhe aqui: ${link}` : ''}`

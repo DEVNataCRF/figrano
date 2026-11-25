@@ -53,6 +53,7 @@ function fakeApi() {
       const created = apiOrder({ id: 'o-bot', number: 8, source: 'WHATSAPP', chatRef: body.chatRef });
       return ok(created, 201);
     }
+    if (path.endsWith('/status') && init.method === 'PATCH') return ok({ id: path.split('/')[3], status: body.status });
     if (path === '/delivery/login-codes/pending') return ok(loginCodes);
     if (path.startsWith('/delivery/login-codes/') && init.method === 'POST') return ok({ updated: 1 });
     if (path === '/auth/me') return ok({ user: { id: 'u', name: 'Sil', role: 'OWNER_ADMIN' } });
@@ -289,4 +290,13 @@ test('código para entrar no site: cada um vira um envio só, e a API fica saben
   await platform.reportLoginCode('c1', true);
   const report = api.calls.find((c) => c.method === 'POST' && c.path === '/delivery/login-codes/c1/sent');
   assert.deepEqual(report.body, { sent: true });
+});
+
+test('aceitar pedido: manda "Em preparo" para a API e devolve o pedido atualizado', async () => {
+  const { platform, api } = setup();
+  const order = await platform.acceptOrder('o9');
+  const call = api.calls.find((c) => c.method === 'PATCH');
+  assert.equal(call.path, '/delivery/orders/o9/status');
+  assert.deepEqual(call.body, { status: 'PREPARING' });
+  assert.equal(order.status, 'PREPARING');
 });

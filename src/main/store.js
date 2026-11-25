@@ -58,7 +58,8 @@ function defaultData() {
         ollamaThink: false,
       },
       // printerName: impressora da comanda (vazio = pergunta toda vez)
-      app: { autoStart: false, printerName: '' },
+      // autoAccept: aceita e imprime sozinho cada pedido novo (a Sil trabalha sozinha na cozinha)
+      app: { autoStart: false, printerName: '', autoAccept: false },
       online: {
         enabled: false,
         apiUrl: '', // servidor da página de pedidos

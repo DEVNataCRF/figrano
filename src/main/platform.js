@@ -453,6 +453,11 @@ class Platform {
   }
 
   /** Nota do cliente (1 a 5) depois da entrega. */
+  /** Aceita o pedido (vai para a cozinha, "Em preparo"); devolve o pedido atualizado da API. */
+  async acceptOrder(orderId) {
+    return this.request('PATCH', `/delivery/orders/${encodeURIComponent(orderId)}/status`, { status: 'PREPARING' });
+  }
+
   async submitReview(orderId, rating, comment) {
     await this.request('POST', `/delivery/orders/${orderId}/review`, { rating, comment: comment || null });
   }
