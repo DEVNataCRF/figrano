@@ -94,6 +94,30 @@ function writeDraft(slug, value) {
  * Fechar ao tocar fora da janela: só se o toque COMEÇOU e TERMINOU no fundo escuro.
  * Selecionar texto num campo e soltar o mouse fora não fecha mais.
  */
+/**
+ * Gesto de celular: arrastar o dedo na direção pedida (`down` fecha janela, `up` abre a
+ * sacola). Só conta se andou o bastante e mais na vertical que na horizontal.
+ */
+function useSwipe(direction, onSwipe, threshold = 60) {
+  const start = useRef(null);
+  return {
+    onTouchStart: (event) => {
+      const t = event.touches[0];
+      start.current = t ? { x: t.clientX, y: t.clientY } : null;
+    },
+    onTouchEnd: (event) => {
+      const from = start.current;
+      start.current = null;
+      const t = event.changedTouches[0];
+      if (!from || !t) return;
+      const dy = t.clientY - from.y;
+      const dx = Math.abs(t.clientX - from.x);
+      if (Math.abs(dy) < threshold || dx > Math.abs(dy)) return;
+      if ((direction === 'down' && dy > 0) || (direction === 'up' && dy < 0)) onSwipe();
+    },
+  };
+}
+
 function useBackdropDismiss(onClose, enabled = true) {
   const startedOnBackdrop = useRef(false);
   return {
@@ -259,6 +283,8 @@ export default function OrderApp({ menu: data, refCode }) {
   const setQty = (key, qty) => setCart((current) => current.map((l) => (l.key === key ? { ...l, qty } : l)).filter((l) => l.qty > 0));
 
   const count = cart.reduce((n, l) => n + l.qty, 0);
+  // Arrastar a barra "Ver sacola" para cima também abre a sacola
+  const swipeOpenBag = useSwipe('up', () => setSheet('bag'), 30);
   const subtotal = cart.reduce((sum, l) => sum + l.qty * lineUnitPrice(items.get(l.itemId), l.options), 0);
   const whatsapp = whatsappLink(store.whatsapp);
   const qtyInCart = (itemId) => cart.filter((l) => l.itemId === itemId).reduce((n, l) => n + l.qty, 0);
@@ -337,7 +363,7 @@ export default function OrderApp({ menu: data, refCode }) {
         {natal && (
           <a className="natal-link" href={`${BUFFET_URL}/natal`}>
             <span aria-hidden="true">🎄</span>
-            <span><strong>Encomendas de Natal abertas</strong> · ceia, combos, pratos e chester para {natal.dates.map((d) => d.date.slice(8, 10) + '/' + d.date.slice(5, 7)).join(', ')}</span>
+            <span><strong>Encomendas de Natal abertas</strong><span className="natal-link__detail">Ceia, combos, pratos e chester · {natal.dates.map((d) => d.date.slice(8, 10) + '/' + d.date.slice(5, 7)).join(', ')}</span></span>
             <span className="natal-link__cta">Ver cardápio ›</span>
           </a>
         )}
@@ -380,8 +406,11 @@ export default function OrderApp({ menu: data, refCode }) {
                         <span className="product__text">
                           <span className="product__name">{inCart > 0 && <span className="product__count">{inCart}x</span>}{item.name}</span>
                           <CardDescription text={item.description} />
-                          {(item.saleUnit || item.portionInfo) && <span className="product__unit">{[item.saleUnit && `Por ${item.saleUnit}`, item.portionInfo].filter(Boolean).join(' · ')}</span>}
-                          <span className="product__price num">{item.available ? money(item.price) : 'Esgotado'}</span>
+                          {item.portionInfo && <span className="product__unit">{item.portionInfo}</span>}
+                          <span className="product__price num">
+                            {item.available ? money(item.price) : 'Esgotado'}
+                            {item.available && item.saleUnit && <small className="product__per"> por {item.saleUnit}</small>}
+                          </span>
                           <span className="product__action" aria-hidden="true" />
                         </span>
                         {item.photo && <StorePhoto className="product__img" src={item.photo} alt="" />}
@@ -414,7 +443,7 @@ export default function OrderApp({ menu: data, refCode }) {
       </div>
 
       {count > 0 && (
-        <motion.div className="bagbar" inert={product || sheet || overlayMounted ? true : undefined} initial={{ y: 90 }} animate={{ y: 0 }} transition={{ type: 'spring', stiffness: 380, damping: 32 }}>
+        <motion.div className="bagbar" inert={product || sheet || overlayMounted ? true : undefined} initial={{ y: 90 }} animate={{ y: 0 }} transition={{ type: 'spring', stiffness: 380, damping: 32 }} {...swipeOpenBag}>
           <button className="btn btn--primary btn--block" onClick={() => setSheet('bag')}>
             <motion.span key={count} className="bagbar__count num" initial={{ scale: 1.6 }} animate={{ scale: 1 }} transition={{ type: 'spring', stiffness: 500, damping: 18 }}>{count}</motion.span>
             <span>Ver sacola</span>
@@ -535,12 +564,15 @@ function useSheetFocus(onClose, focusKey) {
 function Sheet({ title, onClose, children, wide = false, dismissOnBackdrop = true }) {
   const panel = useSheetFocus(onClose, title);
   const backdrop = useBackdropDismiss(onClose, dismissOnBackdrop);
+  // Arrastar a alça (ou o título) para baixo fecha, como nos apps
+  const swipeClose = useSwipe('down', onClose);
   const present = useIsPresent();
   const reduced = useReducedMotion();
   return (
     <motion.div className="sheet" inert={!present ? true : undefined} initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }} transition={{ duration: reduced ? 0 : 0.16 }} {...backdrop}>
       <motion.div ref={panel} tabIndex={-1} className={`sheet__panel${wide ? ' sheet__panel--wide' : ''}`} role="dialog" aria-modal="true" aria-hidden={!present || undefined} aria-label={title} initial={{ y: reduced ? 0 : 16, opacity: 0 }} animate={{ y: 0, opacity: 1 }} exit={{ y: reduced ? 0 : 8, opacity: 0 }} transition={{ duration: reduced ? 0 : 0.2, ease: 'easeOut' }}>
-        <div className="sheet__head">
+        <div className="sheet__grab" aria-hidden="true" {...swipeClose}><span /></div>
+        <div className="sheet__head" {...swipeClose}>
           <h2>{title}</h2>
           <button type="button" className="icon-btn" onClick={onClose} aria-label="Fechar">
             <svg viewBox="0 0 20 20" width="20" height="20" aria-hidden="true"><path d="M5 5l10 10M15 5L5 15" stroke="currentColor" strokeWidth="2" strokeLinecap="round" /></svg>
@@ -652,6 +684,7 @@ const CheckIcon = () => (
 
 function ProductSheet({ item, canOrder, onClose, onAdd, onShared = () => {} }) {
   const backdrop = useBackdropDismiss(onClose);
+  const swipeClose = useSwipe('down', onClose);
   const [qty, setQty] = useState(1);
   const [notes, setNotes] = useState('');
   const [picks, setPicks] = useState([]);
@@ -670,6 +703,7 @@ function ProductSheet({ item, canOrder, onClose, onAdd, onShared = () => {} }) {
   return (
     <motion.div className="sheet" inert={!present ? true : undefined} initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }} transition={{ duration: reduced ? 0 : 0.16 }} {...backdrop}>
       <motion.div ref={panel} tabIndex={-1} className={`sheet__panel sheet__panel--product${item.photo ? '' : ' pd--sem-foto'}`} role="dialog" aria-modal="true" aria-hidden={!present || undefined} aria-label={item.name} initial={{ y: reduced ? 0 : 16, opacity: 0 }} animate={{ y: 0, opacity: 1 }} exit={{ y: reduced ? 0 : 8, opacity: 0 }} transition={{ duration: reduced ? 0 : 0.2, ease: 'easeOut' }}>
+        <div className="sheet__grab sheet__grab--over" aria-hidden="true" {...swipeClose}><span /></div>
         <div className="pd__actions">
           <button type="button" className="icon-btn icon-btn--float" onClick={() => shareProduct(item, onShared)} aria-label={`Compartilhar ${item.name}`}>
             <svg viewBox="0 0 20 20" width="20" height="20" aria-hidden="true"><circle cx="15" cy="4.5" r="2.2" fill="none" stroke="currentColor" strokeWidth="1.8" /><circle cx="5" cy="10" r="2.2" fill="none" stroke="currentColor" strokeWidth="1.8" /><circle cx="15" cy="15.5" r="2.2" fill="none" stroke="currentColor" strokeWidth="1.8" /><path d="M7 9l6-3.4M7 11l6 3.4" stroke="currentColor" strokeWidth="1.8" /></svg>
@@ -1031,15 +1065,16 @@ function Checkout({ slug, refCode, store, items, cart, onPlaced, bairro = '', on
       <section className="checkout__review" aria-label="Itens do pedido">
         <h3>Confira os itens</h3>
         <ul>{cart.map(line => { const item = items.get(line.itemId); const extras = optionLines(item, line.options); return <li key={line.key}><span>{line.qty} × {item?.name}{extras.length > 0 && <small>+ {extras.join(', ')}</small>}{line.notes && <small>{line.notes}</small>}</span><strong className="num">{money(line.qty * lineUnitPrice(item, line.options))}</strong></li>; })}</ul>
+        {/* Valores aqui, no fim do formulário: o rodapé fixo fica só com o botão (sobra tela no celular) */}
+        <div className="totals num">
+          <div><span>Subtotal</span><span>{money(subtotal)}</span></div>
+          {mode === 'delivery' && <div><span>Entrega</span><span>{byNeighborhood && !chosen ? 'escolha o bairro' : fee ? money(fee) : 'Grátis'}</span></div>}
+          <div className="grand"><span>Total</span><span>{mode === 'delivery' && byNeighborhood && !chosen ? 'Escolha o bairro' : money(total)}</span></div>
+        </div>
       </section>
+      <p className="checkout__legal">Seus dados servem só para este pedido e os avisos dele. <a href="/privacidade/" target="_blank" rel="noreferrer">Privacidade</a></p>
       </div></div>
       <div className="checkout__footer">
-      <div className="totals num">
-        <div><span>Subtotal</span><span>{money(subtotal)}</span></div>
-        {mode === 'delivery' && <div><span>Entrega</span><span>{byNeighborhood && !chosen ? 'escolha o bairro' : fee ? money(fee) : 'Grátis'}</span></div>}
-        <div className="grand"><span>Total</span><span>{mode === 'delivery' && byNeighborhood && !chosen ? 'Escolha o bairro' : money(total)}</span></div>
-      </div>
-      <p className="checkout__legal">Seus dados servem só para este pedido e os avisos dele. <a href="/privacidade/" target="_blank" rel="noreferrer">Privacidade</a></p>
       {/* Sempre à vista: logo acima do botão (antes ficava escondida no fim do formulário) */}
       {error && <p className="error" role="alert">{error}</p>}
       <button className="btn btn--primary btn--block" disabled={sending || cart.length === 0}>

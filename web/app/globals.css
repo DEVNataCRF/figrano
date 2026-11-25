@@ -586,3 +586,61 @@ label.opt-row .opt-row__name { display: block; }
 .pd__note summary::before { content: "+ "; }
 .pd__note[open] summary::before { content: "− "; }
 .pd__note .field { margin-top: var(--s2); }
+
+/* =========================================================================
+   Celular primeiro: quase todo pedido chega pelo celular
+   ========================================================================= */
+/* Links do topo com área de toque de dedo (44 px) */
+.hero__links { gap: 0 var(--s4); }
+.hero__links .link { min-height: 44px; display: inline-flex; align-items: center; }
+.natal-link__detail { display: block; font-size: 13px; opacity: 0.9; }
+.festa-link a { display: inline-flex; align-items: center; min-height: 44px; }
+
+/* Cartão sem foto: o "+" fica ao lado do preço, sem linha vazia embaixo */
+.product--sem-foto .product__action { display: none; }
+.product--sem-foto .product__price { min-height: 44px; display: flex; align-items: center; padding-right: 132px; }
+.product--sem-foto .product__quick { left: auto; right: var(--s4); bottom: var(--s4); }
+.product__list { gap: 0; }
+
+/* Fechamento: valores ficam no "Confira os itens"; o rodapé fixo é só o botão */
+.checkout__review .totals { margin-top: var(--s3); }
+.checkout__legal { margin: 0; font-size: 13px; color: var(--muted); }
+
+@media (max-width: 600px) {
+  /* Topo mais curto: o cardápio aparece logo */
+  .hero__body { gap: var(--s3); }
+  .hero__text { padding-top: var(--s2); }
+  .natal-link { margin-top: var(--s3); padding: 10px 14px; gap: 2px var(--s3); font-size: 14px; }
+  .natal-link__cta { margin-left: 0; }
+  .festa-link { margin-top: var(--s2); padding: 4px 12px; gap: 0 var(--s2); font-size: 13px; }
+  .last-order { margin-top: var(--s2); }
+  .notice { margin-top: var(--s3); }
+
+  /* Cartões mais enxutos */
+  .products { gap: var(--s2); }
+  .product__open { padding: var(--s3) var(--s4); gap: var(--s3); }
+  .product__quick { bottom: var(--s3); }
+  .product__img { width: 88px; height: 88px; }
+  .category h2 { font-size: 22px; }
+
+  /* Janelas de baixo para cima ocupam quase a tela toda e respeitam a barra do iPhone */
+  .sheet__panel { max-height: 94dvh; }
+  .checkout__footer { --pad-fundo: calc(var(--s3) + env(safe-area-inset-bottom)); padding-top: var(--s3); gap: var(--s2); }
+  .checkout .group { padding: 12px; }
+}
+
+/* Preço e unidade na mesma linha do cartão */
+.product__per { font-family: var(--font-body); font-size: 13px; font-weight: 700; color: var(--muted); }
+
+/* Alça das janelas (celular): arrastar para baixo fecha */
+.sheet__grab { display: none; }
+@media (max-width: 600px) {
+  .sheet__grab { display: grid; place-items: center; height: 20px; margin: -14px 0 -6px; touch-action: none; }
+  .sheet__grab span { width: 40px; height: 5px; border-radius: 99px; background: var(--line); }
+  .sheet__grab--over { position: absolute; top: 0; left: 0; right: 0; z-index: 3; height: 28px; margin: 0; }
+  .sheet__grab--over span { background: rgb(255 255 255 / 0.85); box-shadow: 0 1px 3px rgb(0 0 0 / 0.25); }
+  .pd--sem-foto .sheet__grab--over span { background: var(--line); box-shadow: none; }
+  .bagbar { touch-action: pan-x; }
+}
+.product__price { column-gap: 6px; }
+.product--sem-foto .product__price { align-items: baseline; padding-top: 10px; }
