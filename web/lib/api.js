@@ -14,16 +14,22 @@ export const PAYMENT_LABELS = {
 const DEFAULT_TIMEOUT_MS = 15000;
 
 /**
- * Chamada à loja com prazo: nunca fica "carregando" para sempre. Erros têm `code`:
- * TIMEOUT (sem resposta no prazo), NETWORK (sem conexão) ou o código devolvido pela loja,
- * além de `status` e `details` quando a loja respondeu.
+ * Chamada à loja com prazo: nunca fica "carregando" para sempre. O prazo vale até o FIM da
+ * leitura da resposta (cabeçalho chegou e o corpo travou também é tempo esgotado: revalidação
+ * de QA, R04). Erros têm `code` e `status`:
+ *  - TIMEOUT / NETWORK (status 0): sem resposta completa no prazo ou sem conexão;
+ *  - BAD_RESPONSE (status 0): a loja respondeu "ok" mas o corpo veio cortado ou ilegível; não é
+ *    sucesso, e no envio do pedido vale como resultado desconhecido (pode ter gravado);
+ *  - o código devolvido pela loja, com `status` e `details`.
  */
-async function call(path, init = {}, { timeoutMs = DEFAULT_TIMEOUT_MS } = {}) {
+export async function requestJson(path, init = {}, { timeoutMs = DEFAULT_TIMEOUT_MS, baseUrl = API_URL } = {}) {
   const controller = new AbortController();
   const timer = setTimeout(() => controller.abort(), timeoutMs);
   let response;
+  let body = '';
   try {
-    response = await fetch(`${API_URL}${path}`, { cache: 'no-store', ...init, signal: controller.signal });
+    response = await fetch(`${baseUrl}${path}`, { cache: 'no-store', ...init, signal: controller.signal });
+    body = await response.text();
   } catch {
     const timedOut = controller.signal.aborted;
     const error = new Error(timedOut
@@ -35,7 +41,16 @@ async function call(path, init = {}, { timeoutMs = DEFAULT_TIMEOUT_MS } = {}) {
   } finally {
     clearTimeout(timer);
   }
-  const data = await response.json().catch(() => ({}));
+  let data = null;
+  try { data = body ? JSON.parse(body) : null; } catch { data = null; }
+  if (!data || typeof data !== 'object') {
+    const error = new Error(response.ok
+      ? 'A resposta da loja chegou incompleta. Confira antes de tentar de novo.'
+      : 'Não foi possível concluir agora. Tente de novo.');
+    error.code = response.ok ? 'BAD_RESPONSE' : '';
+    error.status = response.ok ? 0 : response.status;
+    throw error;
+  }
   if (!response.ok || data.success === false) {
     const error = new Error(data.error?.message || 'Não foi possível concluir agora. Tente de novo.');
     error.status = response.status;
@@ -45,6 +60,8 @@ async function call(path, init = {}, { timeoutMs = DEFAULT_TIMEOUT_MS } = {}) {
   }
   return data.data;
 }
+
+const call = requestJson;
 
 /** Cardápio, horário, regras e se a loja está recebendo pedidos agora. */
 export const fetchMenu = () => call('/public/delivery/menu');

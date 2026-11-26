@@ -1,6 +1,6 @@
 'use client';
 
-import { useEffect, useMemo, useRef, useState } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { AnimatePresence, MotionConfig, motion, useIsPresent, useReducedMotion } from 'motion/react';
 import { STATUS_STEPS, descriptionLines, displayPhone, money, whatsappLink } from '../lib/format.js';
 import { PAYMENT_LABELS, fetchNatal, findOrderAttempt, placeOrder, trackOrder } from '../lib/api.js';
@@ -77,6 +77,38 @@ function readStorage(key, fallback) {
 
 function writeStorage(key, value) {
   try { window.localStorage.setItem(key, JSON.stringify(value)); } catch { /* sem armazenamento: segue em memória */ }
+}
+
+/**
+ * Pedido confirmado pela loja: guarda neste aparelho o que o acompanhamento e "Meus pedidos"
+ * usam. Recebe tudo explícito (telefone e itens), sem depender do formulário ou da sacola da tela:
+ * a recuperação de um envio sem resposta acontece com o formulário ainda vazio (revalidação R01).
+ * `summary.items`: [{ itemId?, name, qty, price, notes, extras, options }].
+ */
+function rememberPlaced(slug, order, suffix, summary) {
+  writeStorage(`sabores:delivery:order:${order.id}`, {
+    pixOnline: order.status === 'AWAITING_PIX',
+    items: summary.items.map((l) => ({ name: l.name, qty: l.qty, price: l.price, notes: l.notes, extras: l.extras || [] })),
+    address: summary.address || '',
+  });
+  const entry = {
+    id: order.id, number: order.number, suffix, createdAt: order.createdAt || new Date().toISOString(),
+    total: Number(order.total) || null, mode: order.mode,
+    items: summary.items.map((l) => ({ itemId: l.itemId ?? null, name: l.name, qty: l.qty, notes: l.notes, options: l.options || [] })),
+  };
+  writeStorage(`sabores:delivery:last:${slug}`, entry);
+  writeStorage(ordersKey(slug), rememberOrder(readStorage(ordersKey(slug), []), entry));
+}
+
+/** Resumo de um pedido recuperado, montado com o que a LOJA gravou (não com a sacola atual). */
+function summaryFromStore(detail) {
+  return {
+    address: '',
+    items: (detail?.items || []).map((i) => ({
+      itemId: null, name: i.name, qty: i.quantity, price: i.unitPrice, notes: i.notes,
+      extras: (i.options || []).map((o) => `${o.quantity}x ${o.name}`), options: [],
+    })),
+  };
 }
 
 /** Rascunho do fechamento: some ao fechar o navegador, mas sobrevive a fechar a janela do pedido. */
@@ -171,6 +203,38 @@ export default function OrderApp({ menu: data, refCode, onReload = () => {} }) {
     setLastOrder({ ...saved, status: null });
     trackOrder(saved.id, saved.suffix).then((o) => setLastOrder({ ...saved, status: o.status })).catch(() => setLastOrder(null));
   }, [slug]);
+  /**
+   * Envio sem resposta guardado no aparelho: conferido aqui, na página da loja, e não só no
+   * fechamento. Funciona com a sacola vazia, com o item fora do cardápio e com a loja fechada
+   * (revalidação R02). Achou: guarda o pedido com o telefone da TENTATIVA e abre o acompanhamento.
+   */
+  const [attempt, setAttempt] = useState(null);
+  const recoverAttempt = useCallback(async (a) => {
+    setAttempt({ ...a, state: 'checking' });
+    try {
+      const order = await findOrderAttempt(a.key, a.phoneSuffix);
+      let detail = null;
+      try { detail = await trackOrder(order.id, a.phoneSuffix); } catch { /* sem itens: o acompanhamento busca */ }
+      rememberPlaced(slug, order, a.phoneSuffix, summaryFromStore(detail));
+      // Só apaga a tentativa depois de guardar o pedido no aparelho
+      clearAttempt(window.localStorage, slug);
+      setCart([]);
+      writeStorage(cartKey(slug), []);
+      writeDraft(slug, null);
+      window.location.href = `/pedido/?id=${encodeURIComponent(order.id)}&t=${a.phoneSuffix}&novo=1`;
+      return 'found';
+    } catch (err) {
+      const state = err.status === 404 ? 'not-arrived' : 'unknown';
+      setAttempt({ ...a, state });
+      return state;
+    }
+  }, [slug]);
+  useEffect(() => {
+    const saved = readAttempt(window.localStorage, slug);
+    if (saved) void recoverAttempt(saved);
+  }, [slug, recoverAttempt]);
+  const dismissAttempt = () => { clearAttempt(window.localStorage, slug); setAttempt(null); };
+
   // Encomendas de Natal abertas no buffet: aviso com link para a seção de Natal
   const [natal, setNatal] = useState(null);
   useEffect(() => { if (BUFFET_URL) fetchNatal().then((n) => setNatal(n?.acceptingOrders ? n : null)); }, []);
@@ -354,6 +418,7 @@ export default function OrderApp({ menu: data, refCode, onReload = () => {} }) {
             </div>
           </div>
         )}
+        {attempt && <AttemptBanner attempt={attempt} onCheck={() => void recoverAttempt(attempt)} onDismiss={dismissAttempt} />}
         {lastOrder && <LastOrderBanner order={lastOrder} items={items} canOrder={canOrder} onRepeat={() => repeatOrder()} />}
         {!canOrder && (
           <p className="notice">
@@ -512,6 +577,7 @@ export default function OrderApp({ menu: data, refCode, onReload = () => {} }) {
             items={items}
             cart={cart}
             onMenuStale={onReload}
+            onRecover={recoverAttempt}
             onPlaced={(order, suffix) => {
               setCart([]);
               writeStorage(cartKey(slug), []);
@@ -845,7 +911,7 @@ function feeLabel(store) {
   return store.deliveryFee ? `Entrega ${money(store.deliveryFee)}` : 'Entrega grátis';
 }
 
-function Checkout({ slug, refCode, store, items, cart, onPlaced, onMenuStale = () => {}, bairro = '', onBairro = () => {} }) {
+function Checkout({ slug, refCode, store, items, cart, onPlaced, onMenuStale = () => {}, onRecover = async () => 'unknown', bairro = '', onBairro = () => {} }) {
   const reduced = useReducedMotion();
   const [mode, setMode] = useState(store.delivery ? 'delivery' : 'pickup');
   const [form, setForm] = useState(() => restoreDeliveryContact(null));
@@ -884,13 +950,10 @@ function Checkout({ slug, refCode, store, items, cart, onPlaced, onMenuStale = (
     const hasAddress = saved.address.trim() && (saved.noNumber || saved.number.trim()) && saved.neighborhood.trim() && !saved.legacyAddress;
     setEditingContact(draft?.editingContact ?? !(saved.name.trim() && saved.phone.trim() && hasAddress));
     setDraftReady(true);
-    // Envio anterior sem resposta (página recarregada, janela fechada): confere antes de tudo
-    const attempt = readAttempt(window.localStorage, slug);
-    if (attempt) {
-      setPending({ ...attempt, status: 'unknown' });
-      void checkAttempt(attempt);
-    }
-    // eslint-disable-next-line react-hooks/exhaustive-deps
+    // Tentativa anterior ainda sem resposta definitiva: a mesma chave vale no próximo envio
+    // (a página da loja já conferiu com a loja; aqui só reaproveita a chave)
+    const previous = readAttempt(window.localStorage, slug);
+    if (previous) setPending({ ...previous, status: 'idle' });
   }, [slug]);
   // Guarda o rascunho a cada mudança (fechar a janela ou recarregar a página não perde nada)
   useEffect(() => {
@@ -955,7 +1018,7 @@ function Checkout({ slug, refCode, store, items, cart, onPlaced, onMenuStale = (
         // O total que o cliente viu no botão: se a loja calcular outro, nada é gravado
         expectedTotal: attempt.total,
       });
-      finishPlaced(order);
+      finishPlaced(order, attempt.phoneSuffix);
     } catch (err) {
       sendLock.current = false;
       setSending(false);
@@ -984,45 +1047,34 @@ function Checkout({ slug, refCode, store, items, cart, onPlaced, onMenuStale = (
   async function checkAttempt(attempt = pending) {
     if (!attempt) return;
     setChecking(true);
-    try {
-      const order = await findOrderAttempt(attempt.key, attempt.phoneSuffix);
-      setError('');
-      finishPlaced(order);
-    } catch (err) {
-      if (err.status === 404) {
-        // Não chegou: pode enviar de novo (a mesma chave garante um pedido só)
-        setPending({ ...attempt, status: 'idle' });
-        setError('Seu último envio não chegou à loja. Confira os dados e envie de novo.');
-      } else {
-        setPending({ ...attempt, status: 'unknown' });
-        setError('Não deu para conferir seu último envio agora. Confira sua internet e toque em "Conferir envio".');
-      }
-    } finally {
-      setChecking(false);
+    // Mesma conferência da página da loja (achou = guarda com o telefone da tentativa e abre o acompanhamento)
+    const result = await onRecover(attempt);
+    setChecking(false);
+    if (result === 'not-arrived') {
+      // Não chegou: pode enviar de novo (a mesma chave garante um pedido só)
+      setPending({ ...attempt, status: 'idle' });
+      setError('Seu último envio não chegou à loja. Confira os dados e envie de novo.');
+    } else if (result === 'unknown') {
+      setPending({ ...attempt, status: 'unknown' });
+      setError('Não deu para conferir seu último envio agora. Confira sua internet e toque em "Conferir envio".');
     }
   }
 
   /** Pedido confirmado pela loja (envio agora ou conferido depois): guarda o resumo e segue. */
-  function finishPlaced(order) {
+  /** Envio confirmado agora (resposta recebida): a sacola e o endereço da tela são os que foram enviados. */
+  function finishPlaced(order, suffix) {
+    rememberPlaced(slug, order, suffix, {
+      address: mode === 'delivery' ? fullAddress : '',
+      items: cart.map((l) => ({
+        itemId: l.itemId, name: items.get(l.itemId)?.name, qty: l.qty, price: lineUnitPrice(items.get(l.itemId), l.options),
+        notes: l.notes, extras: optionLines(items.get(l.itemId), l.options), options: l.options || [],
+      })),
+    });
+    // Só apaga a tentativa depois de guardar o pedido no aparelho
     clearAttempt(window.localStorage, slug);
     setPending(null);
-    {
-      // O resumo fica neste aparelho para a página de acompanhamento
-      writeStorage(`sabores:delivery:order:${order.id}`, {
-        pixOnline: order.status === 'AWAITING_PIX',
-        items: cart.map((l) => ({ name: items.get(l.itemId)?.name, qty: l.qty, price: lineUnitPrice(items.get(l.itemId), l.options), notes: l.notes, extras: optionLines(items.get(l.itemId), l.options) })),
-        address: mode === 'delivery' ? fullAddress : '',
-      });
-      const entry = {
-        id: order.id, number: order.number, suffix: form.phone.replace(/\D/g, '').slice(-4), createdAt: new Date().toISOString(),
-        total: Number(order.total) || null, mode: order.mode,
-        items: cart.map((l) => ({ itemId: l.itemId, name: items.get(l.itemId)?.name, qty: l.qty, notes: l.notes, options: l.options || [] })),
-      };
-      writeStorage(`sabores:delivery:last:${slug}`, entry);
-      writeStorage(ordersKey(slug), rememberOrder(readStorage(ordersKey(slug), []), entry));
-      writeDraft(slug, null);
-      onPlaced(order, form.phone.replace(/\D/g, '').slice(-4));
-    }
+    writeDraft(slug, null);
+    onPlaced(order, suffix);
   }
 
   return (
@@ -1169,6 +1221,27 @@ function Checkout({ slug, refCode, store, items, cart, onPlaced, onMenuStale = (
 }
 
 const STATUS_LABEL = Object.fromEntries(STATUS_STEPS.map((s) => [s.status, s.label]));
+
+/** Último envio sem resposta da loja: aparece na página, com ou sem sacola (revalidação R02). */
+function AttemptBanner({ attempt, onCheck, onDismiss }) {
+  if (attempt.state === 'checking') {
+    return <p className="attempt" role="status">Conferindo seu último pedido com a loja…</p>;
+  }
+  if (attempt.state === 'not-arrived') {
+    return (
+      <div className="attempt" role="status">
+        <p><strong>Seu último envio{attempt.total ? ` (${money(attempt.total)})` : ''} não chegou à loja.</strong> Se ainda quiser, monte o pedido e envie de novo.</p>
+        <button type="button" className="btn btn--ghost" onClick={onDismiss}>Entendi</button>
+      </div>
+    );
+  }
+  return (
+    <div className="attempt attempt--warn" role="alert">
+      <p><strong>Seu último pedido{attempt.total ? ` (${money(attempt.total)})` : ''} ficou sem confirmação da loja.</strong> Ele pode ter chegado. Confira antes de pedir de novo.</p>
+      <button type="button" className="btn btn--primary" onClick={onCheck}>Conferir envio</button>
+    </div>
+  );
+}
 
 /** Pedido feito neste aparelho: acompanhar enquanto anda, pedir de novo depois. */
 function LastOrderBanner({ order, items, canOrder, onRepeat }) {
