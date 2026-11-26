@@ -4,13 +4,13 @@ const test = require('node:test');
 const assert = require('node:assert/strict');
 const { Store } = require('../src/main/store');
 const { BotEngine } = require('../src/main/robo/engine');
-const { statusAviso, parseReview, reviewRequest } = require('../src/main/robo/avisos');
+const { statusAviso, confirmedMessage, parseReview, reviewRequest } = require('../src/main/robo/avisos');
 
 const LINK = 'http://site.test/pedido/?id=o1&t=0001';
 const order = (status) => ({ id: 'o1', number: 12, status, customer: { phone: '5528999990001' } });
 
 test('avisos de produção, saída, retirada e entrega, com o link de acompanhamento', () => {
-  assert.match(statusAviso(order('preparing'), { storeName: 'Sabores da Sil', link: LINK }), /#12 entrou em produção[\s\S]*Acompanhe aqui: http:\/\/site\.test/);
+  assert.match(statusAviso(order('preparing'), { storeName: 'Sabores da Sil', link: LINK }), /Recebemos seu pedido #12 e ele já está sendo preparado[\s\S]*Acompanhe aqui: http:\/\/site\.test/);
   assert.match(statusAviso(order('out'), { storeName: 'Sabores da Sil', link: LINK }), /saiu para entrega/);
   assert.match(statusAviso(order('ready'), { storeName: 'Sabores da Sil', link: LINK }), /pronto para retirada/);
   assert.match(statusAviso(order('done'), { storeName: 'Sabores da Sil', link: LINK }), /#12 entregue/);
@@ -50,4 +50,47 @@ test('"quero acompanhar meu pedido" responde o status e o link', async () => {
   store.setOrderStatus(store.orders[0].id, 'out');
   const out = await engine.handle({ chatId: 'c@c.us', type: 'chat', text: 'quero acompanhar meu pedido' });
   assert.match(out.replies[0], /saiu para entrega[\s\S]*Acompanhe aqui: http:\/\/site\.test/);
+});
+
+test('pedido confirmado: modelo com itens, taxa, total, pagamento e onde entrega', () => {
+  const pedido = {
+    number: 430, status: 'preparing', customer: { name: 'Nata Correa Figueiredo' }, mode: 'delivery',
+    address: 'Av Francisco Lacerda de Aguiar, 120 - Centro', neighborhood: 'Centro', fee: 2, total: 38,
+    payment: 'Cartão de crédito', paymentMethod: 'CREDIT_CARD',
+    items: [
+      { name: 'Refrigerante 600ml', qty: 1, price: 9, subtotal: 9, options: [] },
+      { name: 'Big Manos', qty: 1, price: 27, subtotal: 27, options: [{ name: 'Maionese', quantity: 2 }] },
+    ],
+  };
+  const text = confirmedMessage(pedido, { storeName: 'Sabores da Sil', link: LINK });
+  assert.equal(text.split('\n')[0], 'Olá, Nata Correa Figueiredo! 👋');
+  for (const line of [
+    'Recebemos seu pedido #430 e ele já está sendo preparado. 😋',
+    '📦 Itens:',
+    '   • 1x Refrigerante 600ml — R$ 9,00',
+    '   • 1x Big Manos — R$ 27,00',
+    '      + 2x Maionese',
+    '🚚 Taxa de entrega: R$ 2,00',
+    '💰 Total: R$ 38,00',
+    '💳 Pagamento: Cartão de crédito',
+    '📍 Entrega: Av Francisco Lacerda de Aguiar, 120 — Centro',
+    'Sabores da Sil',
+    'Avisamos por aqui quando sair para entrega.',
+    `Acompanhe aqui: ${LINK}`,
+    'Obrigado! ❤️',
+  ]) assert.ok(text.split('\n').includes(line), `faltou: ${line}`);
+});
+
+test('pedido confirmado: retirada, Pix já pago, troco e entrega grátis', () => {
+  const base = { number: 7, customer: { name: 'Ana' }, items: [{ name: 'Coxinha', qty: 10, price: 1.5, options: [] }], total: 15 };
+  const retirada = confirmedMessage({ ...base, mode: 'pickup', fee: 0, paymentMethod: 'PIX', payment: 'Pix', pixProofAt: '2026-11-25T20:00:00Z' }, { storeName: 'Sabores da Sil', pickupAddress: 'Rua da Sil, 10' });
+  assert.match(retirada, /💳 Pagamento: Pix \(pago ✅\)/);
+  assert.match(retirada, /🏪 Retirada: Rua da Sil, 10/);
+  assert.match(retirada, /quando estiver pronto para retirar/);
+  assert.doesNotMatch(retirada, /Taxa de entrega|Entrega grátis/);
+  assert.match(retirada, /• 10x Coxinha — R\$ 15,00/); // sem subtotal gravado: preço × quantidade
+  const dinheiro = confirmedMessage({ ...base, mode: 'delivery', address: 'Rua A, 1', neighborhood: '', fee: 0, paymentMethod: 'CASH', payment: 'Dinheiro', changeFor: 50 }, { storeName: 'Sabores da Sil' });
+  assert.match(dinheiro, /Dinheiro \(troco para R\$ 50,00\)/);
+  assert.match(dinheiro, /🚚 Entrega grátis/);
+  assert.match(dinheiro, /📍 Entrega: Rua A, 1\n/);
 });

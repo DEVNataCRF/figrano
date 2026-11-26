@@ -6,14 +6,68 @@
  */
 
 const { money } = require('./format');
+const { splitAddress } = require('../comanda-dados');
+
+/** Forma de pagamento como o cliente lê, com o detalhe que importa (Pix já pago, troco). */
+function paymentLine(order) {
+  const label = order.payment || ({ PIX: 'Pix', CREDIT_CARD: 'Cartão de crédito', DEBIT_CARD: 'Cartão de débito', CASH: 'Dinheiro' })[order.paymentMethod] || 'A combinar';
+  if (order.paymentMethod === 'PIX' && order.pixProofAt) return `${label} (pago ✅)`;
+  const change = Number(order.changeFor) || 0;
+  if (order.paymentMethod === 'CASH' && change > Number(order.total)) return `${label} (troco para ${money(change)})`;
+  return label;
+}
+
+/**
+ * Mensagem de pedido confirmado (a loja aceitou e começou a preparar): itens com valor,
+ * taxa, total, pagamento, onde entrega ou retira e o link de acompanhamento.
+ */
+function confirmedMessage(order, { storeName, link, pickupAddress }) {
+  const name = String(order.customer?.name || '').trim();
+  const pickup = order.mode === 'pickup';
+  const lines = (order.items || []).map((item) => {
+    const value = item.subtotal ?? (Number(item.price) || 0) * (Number(item.qty) || 0);
+    const extras = (item.options || []).map((o) => `\n      + ${o.quantity}x ${o.name}`).join('');
+    const note = item.notes ? `\n      _${item.notes}_` : '';
+    return `   • ${item.qty}x ${item.name} — ${money(value)}${extras}${note}`;
+  });
+  const fee = Number(order.fee) || 0;
+  let where;
+  if (pickup) {
+    where = `🏪 Retirada: ${pickupAddress || 'na loja'}`;
+  } else {
+    const { street, reference } = splitAddress(order.address, order.neighborhood);
+    const place = [street, reference].filter(Boolean).join(', ');
+    where = `📍 Entrega: ${place}${order.neighborhood ? ` — ${order.neighborhood}` : ''}`;
+  }
+  return [
+    `Olá${name ? `, ${name}` : ''}! 👋`,
+    '',
+    `Recebemos seu pedido #${order.number} e ele já está sendo preparado. 😋`,
+    '',
+    '📦 Itens:',
+    ...lines,
+    '',
+    ...(pickup ? [] : [fee > 0 ? `🚚 Taxa de entrega: ${money(fee)}` : '🚚 Entrega grátis']),
+    `💰 Total: ${money(order.total)}`,
+    '',
+    '',
+    `💳 Pagamento: ${paymentLine(order)}`,
+    where,
+    ...(storeName ? [storeName] : []),
+    pickup ? 'Avisamos por aqui quando estiver pronto para retirar.' : 'Avisamos por aqui quando sair para entrega.',
+    ...(link ? ['', `Acompanhe aqui: ${link}`] : []),
+    '',
+    'Obrigado! ❤️',
+  ].join('\n');
+}
 
 /** Mensagem para cada mudança de status. `link` = página de acompanhamento no site. */
-function statusAviso(order, { storeName, link }) {
+function statusAviso(order, { storeName, link, pickupAddress = '' }) {
   const n = `#${order.number}`;
   const track = link ? `\n\nAcompanhe aqui: ${link}` : '';
   switch (order.status) {
     case 'preparing':
-      return `Seu pedido ${n} entrou em produção! Já estamos preparando tudo com carinho.${track}`;
+      return confirmedMessage(order, { storeName, link, pickupAddress });
     case 'out':
       return `Seu pedido ${n} saiu para entrega! Daqui a pouco chega aí.${track}`;
     case 'ready':
@@ -57,4 +111,4 @@ function reviewThanks(rating) {
     : `Poxa, sinto muito que não foi como esperado. Já avisei a Sil para ela entender o que aconteceu e falar com você.`;
 }
 
-module.exports = { statusAviso, reviewRequest, parseReview, reviewThanks, money };
+module.exports = { statusAviso, confirmedMessage, reviewRequest, parseReview, reviewThanks, money };

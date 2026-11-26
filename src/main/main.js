@@ -482,7 +482,7 @@ async function onPlatformEvent(event) {
     const link = platform.trackingLinkFor(order);
     const text = event.previous === 'AWAITING_PIX' && order.status === 'new'
       ? `Comprovante conferido! Seu pedido #${order.number} está confirmado.${link ? `\n\nAcompanhe aqui: ${link}` : ''}`
-      : statusAviso(order, { storeName: platform.storeSettings(store.settings.store).name, link });
+      : statusAviso(order, { storeName: platform.storeSettings(store.settings.store).name, pickupAddress: platform.storeSettings(store.settings.store).address, link });
     if (text && canMessage) {
       const chatId = await chatOf(order);
       // Avisos de pedido saem em "ativo" e "só avisos", mesmo com a conversa pausada.
