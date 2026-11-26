@@ -3,7 +3,8 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
 import { AnimatePresence, MotionConfig, motion, useIsPresent, useReducedMotion } from 'motion/react';
 import { STATUS_STEPS, descriptionLines, displayPhone, money, whatsappLink } from '../lib/format.js';
-import { PAYMENT_LABELS, fetchNatal, placeOrder, trackOrder } from '../lib/api.js';
+import { PAYMENT_LABELS, fetchNatal, findOrderAttempt, placeOrder, trackOrder } from '../lib/api.js';
+import { classifySendError, clearAttempt, newAttemptKey, readAttempt, writeAttempt } from '../lib/order-attempt.js';
 import StorePhoto from './StorePhoto.js';
 import MyOrdersPanel from './MyOrders.js';
 import { checkoutProblem, formatDeliveryAddress, restoreDeliveryContact } from '../lib/delivery-address.js';
@@ -131,7 +132,7 @@ function useBackdropDismiss(onClose, enabled = true) {
 
 const initials = (name) => String(name).split(/\s+/).filter(Boolean).slice(0, 2).map((w) => w[0]).join('').toUpperCase();
 
-export default function OrderApp({ menu: data, refCode }) {
+export default function OrderApp({ menu: data, refCode, onReload = () => {} }) {
   const slug = `${data.companyName || 'loja'}:${data.whatsappPhone || ''}`;
   const { store, menu, canOrder, open, reason } = useMemo(() => fromApi(data), [data]);
   // Fechada mais cedo pelo atalho do painel: a próxima abertura conta depois desse fechamento
@@ -510,6 +511,7 @@ export default function OrderApp({ menu: data, refCode }) {
             store={store}
             items={items}
             cart={cart}
+            onMenuStale={onReload}
             onPlaced={(order, suffix) => {
               setCart([]);
               writeStorage(cartKey(slug), []);
@@ -843,7 +845,7 @@ function feeLabel(store) {
   return store.deliveryFee ? `Entrega ${money(store.deliveryFee)}` : 'Entrega grátis';
 }
 
-function Checkout({ slug, refCode, store, items, cart, onPlaced, bairro = '', onBairro = () => {} }) {
+function Checkout({ slug, refCode, store, items, cart, onPlaced, onMenuStale = () => {}, bairro = '', onBairro = () => {} }) {
   const reduced = useReducedMotion();
   const [mode, setMode] = useState(store.delivery ? 'delivery' : 'pickup');
   const [form, setForm] = useState(() => restoreDeliveryContact(null));
@@ -852,8 +854,12 @@ function Checkout({ slug, refCode, store, items, cart, onPlaced, bairro = '', on
   const streets = useMemo(() => streetsOf(store.city), [store.city]);
   const cityNeighborhoods = useMemo(() => neighborhoodsOf(store.city), [store.city]);
   const [payment, setPayment] = useState(store.payments[0] || '');
-  // Mesma chave se o cliente clicar duas vezes: a loja grava um pedido só
-  const [idempotencyKey] = useState(() => `site-${Date.now()}-${Math.random().toString(36).slice(2, 10)}`);
+  // Tentativa de envio guardada no aparelho (chave + telefone + total). Vale até uma resposta
+  // definitiva da loja: resposta perdida, recarregar ou fechar a janela não gera outro pedido.
+  const [pending, setPending] = useState(null);
+  const [checking, setChecking] = useState(false);
+  // A mesma chave já virou um pedido com outros itens: { orderId, number }
+  const [alreadyPlaced, setAlreadyPlaced] = useState(null);
   const [changeFor, setChangeFor] = useState('');
   const [notes, setNotes] = useState('');
   const [error, setError] = useState('');
@@ -878,6 +884,13 @@ function Checkout({ slug, refCode, store, items, cart, onPlaced, bairro = '', on
     const hasAddress = saved.address.trim() && (saved.noNumber || saved.number.trim()) && saved.neighborhood.trim() && !saved.legacyAddress;
     setEditingContact(draft?.editingContact ?? !(saved.name.trim() && saved.phone.trim() && hasAddress));
     setDraftReady(true);
+    // Envio anterior sem resposta (página recarregada, janela fechada): confere antes de tudo
+    const attempt = readAttempt(window.localStorage, slug);
+    if (attempt) {
+      setPending({ ...attempt, status: 'unknown' });
+      void checkAttempt(attempt);
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [slug]);
   // Guarda o rascunho a cada mudança (fechar a janela ou recarregar a página não perde nada)
   useEffect(() => {
@@ -914,6 +927,16 @@ function Checkout({ slug, refCode, store, items, cart, onPlaced, bairro = '', on
     }
     sendLock.current = true;
     setSending(true);
+    setAlreadyPlaced(null);
+    // Guarda a tentativa ANTES de enviar: se a resposta se perder, a mesma chave é conferida/reenviada
+    const attempt = {
+      key: pending?.key || newAttemptKey(),
+      phoneSuffix: form.phone.replace(/\D/g, '').slice(-4),
+      total: Math.round(total * 100) / 100,
+      createdAt: pending?.createdAt || Date.now(),
+    };
+    writeAttempt(window.localStorage, slug, attempt);
+    setPending({ ...attempt, status: 'sending' });
     try {
       writeStorage(`sabores:delivery:customer:${slug}`, { ...form, addressVersion: 2 });
       const change = cash && changeFor.trim() ? Number(changeFor.replace(/[^\d,.]/g, '').replace(',', '.')) : null;
@@ -928,8 +951,62 @@ function Checkout({ slug, refCode, store, items, cart, onPlaced, bairro = '', on
         notes: notes.trim() || null,
         items: cart.map(({ itemId, qty, notes: lineNotes, options }) => ({ productId: itemId, quantity: qty, notes: lineNotes || null, ...(options?.length ? { options } : {}) })),
         chatRef: refCode || null,
-        idempotencyKey,
+        idempotencyKey: attempt.key,
+        // O total que o cliente viu no botão: se a loja calcular outro, nada é gravado
+        expectedTotal: attempt.total,
       });
+      finishPlaced(order);
+    } catch (err) {
+      sendLock.current = false;
+      setSending(false);
+      const kind = classifySendError(err);
+      if (kind === 'unknown') {
+        // Pode ter chegado: não gera chave nova. "Conferir envio" pergunta à loja.
+        setPending({ ...attempt, status: 'unknown' });
+        setError(`${err.message} Seu pedido pode ter chegado à loja: toque em "Conferir envio" antes de enviar de novo.`);
+        return;
+      }
+      if (kind === 'price-changed') {
+        // Nada foi gravado: atualiza os preços na tela e o cliente confirma o total novo
+        setPending({ ...attempt, status: 'idle' });
+        setError(err.message);
+        onMenuStale();
+        return;
+      }
+      clearAttempt(window.localStorage, slug);
+      setPending(null);
+      if (kind === 'already-placed') setAlreadyPlaced(err.details || null);
+      setError(err.message);
+    }
+  }
+
+  /** "Meu envio chegou?": pergunta à loja pela chave guardada, sem enviar outro pedido. */
+  async function checkAttempt(attempt = pending) {
+    if (!attempt) return;
+    setChecking(true);
+    try {
+      const order = await findOrderAttempt(attempt.key, attempt.phoneSuffix);
+      setError('');
+      finishPlaced(order);
+    } catch (err) {
+      if (err.status === 404) {
+        // Não chegou: pode enviar de novo (a mesma chave garante um pedido só)
+        setPending({ ...attempt, status: 'idle' });
+        setError('Seu último envio não chegou à loja. Confira os dados e envie de novo.');
+      } else {
+        setPending({ ...attempt, status: 'unknown' });
+        setError('Não deu para conferir seu último envio agora. Confira sua internet e toque em "Conferir envio".');
+      }
+    } finally {
+      setChecking(false);
+    }
+  }
+
+  /** Pedido confirmado pela loja (envio agora ou conferido depois): guarda o resumo e segue. */
+  function finishPlaced(order) {
+    clearAttempt(window.localStorage, slug);
+    setPending(null);
+    {
       // O resumo fica neste aparelho para a página de acompanhamento
       writeStorage(`sabores:delivery:order:${order.id}`, {
         pixOnline: order.status === 'AWAITING_PIX',
@@ -945,10 +1022,6 @@ function Checkout({ slug, refCode, store, items, cart, onPlaced, bairro = '', on
       writeStorage(ordersKey(slug), rememberOrder(readStorage(ordersKey(slug), []), entry));
       writeDraft(slug, null);
       onPlaced(order, form.phone.replace(/\D/g, '').slice(-4));
-    } catch (err) {
-      sendLock.current = false;
-      setError(err.message);
-      setSending(false);
     }
   }
 
@@ -1077,7 +1150,17 @@ function Checkout({ slug, refCode, store, items, cart, onPlaced, bairro = '', on
       <div className="checkout__footer">
       {/* Sempre à vista: logo acima do botão (antes ficava escondida no fim do formulário) */}
       {error && <p className="error" role="alert">{error}</p>}
-      <button className="btn btn--primary btn--block" disabled={sending || cart.length === 0}>
+      {alreadyPlaced?.orderId && (
+        <a className="btn btn--ghost btn--block" href={`/pedido/?id=${encodeURIComponent(alreadyPlaced.orderId)}&t=${form.phone.replace(/\D/g, '').slice(-4)}`}>
+          Ver o pedido #{alreadyPlaced.number}
+        </a>
+      )}
+      {pending?.status === 'unknown' && (
+        <button type="button" className="btn btn--ghost btn--block" disabled={checking || sending} onClick={() => void checkAttempt()}>
+          {checking ? 'Conferindo…' : 'Conferir envio'}
+        </button>
+      )}
+      <button className="btn btn--primary btn--block" disabled={sending || checking || cart.length === 0}>
         {sending ? 'Enviando…' : mode === 'delivery' && byNeighborhood && !chosen ? 'Enviar pedido' : `Enviar pedido · ${money(total)}`}
       </button>
       </div>

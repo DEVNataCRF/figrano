@@ -6,9 +6,10 @@
   "type": "module",
   "scripts": {
     "dev": "next dev",
+    "prebuild": "node --test",
     "build": "next build",
     "start": "next start",
-    "test": "node --test --test-reporter=spec || exit 0"
+    "test": "node --test --test-reporter=spec"
   },
   "dependencies": {
     "motion": "^14.14.0",

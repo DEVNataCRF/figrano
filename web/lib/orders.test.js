@@ -73,3 +73,13 @@ test('pedido concluído: todas as etapas marcadas como feitas, nenhuma "em andam
   const steps = timelineOf({ mode: 'DELIVERY', status: 'DONE', createdAt: '2026-11-23T22:46:00Z' }, false);
   assert.deepEqual(steps.map((s) => s.state), ['done', 'done', 'done', 'done']);
 });
+
+test('acompanhamento: espera cresce depois de falhas e respeita o limite da loja (QA10)', async () => {
+  const { nextPollDelay } = await import('./orders.js');
+  assert.equal(nextPollDelay(0), 10000);
+  assert.equal(nextPollDelay(1), 20000);
+  assert.equal(nextPollDelay(2), 40000);
+  assert.equal(nextPollDelay(3), 60000);
+  assert.equal(nextPollDelay(10), 60000);
+  assert.equal(nextPollDelay(0, 429), 60000);
+});

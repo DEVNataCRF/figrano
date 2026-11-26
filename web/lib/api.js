@@ -10,18 +10,37 @@ export const PAYMENT_LABELS = {
   CASH: 'Dinheiro',
 };
 
-async function call(path, init) {
+/** Prazo padrão de cada chamada (o envio do pedido tem prazo próprio, maior). */
+const DEFAULT_TIMEOUT_MS = 15000;
+
+/**
+ * Chamada à loja com prazo: nunca fica "carregando" para sempre. Erros têm `code`:
+ * TIMEOUT (sem resposta no prazo), NETWORK (sem conexão) ou o código devolvido pela loja,
+ * além de `status` e `details` quando a loja respondeu.
+ */
+async function call(path, init = {}, { timeoutMs = DEFAULT_TIMEOUT_MS } = {}) {
+  const controller = new AbortController();
+  const timer = setTimeout(() => controller.abort(), timeoutMs);
   let response;
   try {
-    response = await fetch(`${API_URL}${path}`, { cache: 'no-store', ...init });
+    response = await fetch(`${API_URL}${path}`, { cache: 'no-store', ...init, signal: controller.signal });
   } catch {
-    throw new Error('Sem conexão com a loja agora. Confira sua internet e tente de novo.');
+    const timedOut = controller.signal.aborted;
+    const error = new Error(timedOut
+      ? 'A loja demorou para responder. Confira sua internet e tente de novo.'
+      : 'Sem conexão com a loja agora. Confira sua internet e tente de novo.');
+    error.code = timedOut ? 'TIMEOUT' : 'NETWORK';
+    error.status = 0;
+    throw error;
+  } finally {
+    clearTimeout(timer);
   }
   const data = await response.json().catch(() => ({}));
   if (!response.ok || data.success === false) {
     const error = new Error(data.error?.message || 'Não foi possível concluir agora. Tente de novo.');
     error.status = response.status;
     error.code = data.error?.code || '';
+    error.details = data.error?.details;
     throw error;
   }
   return data.data;
@@ -39,7 +58,11 @@ export const placeOrder = (body) =>
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify(body),
-  });
+  }, { timeoutMs: 25000 });
+
+/** "Meu envio chegou?": o pedido feito com esta chave (404 = não chegou à loja). */
+export const findOrderAttempt = (key, phoneSuffix) =>
+  call(`/public/delivery/orders/by-key/${encodeURIComponent(key)}?phone=${encodeURIComponent(phoneSuffix)}`);
 
 /** Acompanhar: precisa dos 4 últimos dígitos do WhatsApp usado no pedido. */
 export const trackOrder = (id, phoneSuffix) =>

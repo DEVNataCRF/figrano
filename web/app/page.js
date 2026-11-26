@@ -1,6 +1,6 @@
 'use client';
 
-import { useEffect, useState } from 'react';
+import { useCallback, useEffect, useState } from 'react';
 import { fetchMenu } from '../lib/api.js';
 import OrderApp from './OrderApp.js';
 
@@ -10,20 +10,40 @@ export default function StorePage() {
   const [error, setError] = useState('');
   const [refCode, setRefCode] = useState('');
 
+  const [loading, setLoading] = useState(false);
+
+  /** Busca o cardápio (com prazo). Usada na abertura, no "Tentar de novo" e quando o preço muda. */
+  const load = useCallback(async () => {
+    setLoading(true);
+    try {
+      setMenu(await fetchMenu());
+      setError('');
+    } catch (err) {
+      setError(err.message);
+    } finally {
+      setLoading(false);
+    }
+  }, []);
+
   useEffect(() => {
     const r = new URLSearchParams(window.location.search).get('r') || '';
     setRefCode(/^[a-f0-9]{6,40}$/i.test(r) ? r : '');
-    fetchMenu().then(setMenu).catch((err) => setError(err.message));
-    // Recarrega o estado da loja (aberta/fechada) de tempos em tempos
-    const timer = setInterval(() => fetchMenu().then(setMenu).catch(() => {}), 60000);
-    return () => clearInterval(timer);
-  }, []);
+    void load();
+    // Recarrega o estado da loja (aberta/fechada) de tempos em tempos; volta sozinho quando a rede volta
+    const timer = setInterval(() => fetchMenu().then((m) => { setMenu(m); setError(''); }).catch(() => {}), 60000);
+    const online = () => void load();
+    window.addEventListener('online', online);
+    return () => { clearInterval(timer); window.removeEventListener('online', online); };
+  }, [load]);
 
   if (error && !menu) {
     return (
-      <main className="page">
+      <main className="page page--error">
         <h1>{process.env.NEXT_PUBLIC_STORE_NAME || 'Cardápio da loja'}</h1>
         <p className="error" role="alert">{error}</p>
+        <button type="button" className="btn btn--primary" disabled={loading} onClick={() => void load()}>
+          {loading ? 'Tentando…' : 'Tentar de novo'}
+        </button>
       </main>
     );
   }
@@ -44,5 +64,5 @@ export default function StorePage() {
       </main>
     );
   }
-  return <OrderApp menu={menu} refCode={refCode} />;
+  return <OrderApp menu={menu} refCode={refCode} onReload={load} />;
 }

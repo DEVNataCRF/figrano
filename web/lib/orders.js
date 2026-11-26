@@ -62,3 +62,17 @@ export function timelineOf(order, pixFlow) {
 
 /** Mensagem pronta do botão "Continuar no WhatsApp" (o robô responde com o andamento). */
 export const continueText = (number) => `Oi! Acabei de fazer o pedido #${number} pelo site. Pode me avisar por aqui?`;
+
+/** Intervalo normal da consulta do acompanhamento. */
+export const TRACK_POLL_MS = 10000;
+const TRACK_MAX_POLL_MS = 60000;
+
+/**
+ * Próxima consulta do acompanhamento: 10 s normalmente; depois de falhas, espera cada vez mais
+ * (20 s, 40 s, até 60 s) para não insistir com a loja fora do ar. Limite de consultas (429): 60 s.
+ */
+export function nextPollDelay(failures, status = 0) {
+  if (status === 429) return TRACK_MAX_POLL_MS;
+  if (!failures) return TRACK_POLL_MS;
+  return Math.min(TRACK_MAX_POLL_MS, TRACK_POLL_MS * 2 ** Math.min(failures, 6));
+}

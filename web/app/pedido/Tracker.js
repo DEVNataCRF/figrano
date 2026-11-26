@@ -1,13 +1,11 @@
 'use client';
 
-import { useEffect, useState } from 'react';
+import { useCallback, useEffect, useRef, useState } from 'react';
 import { money, whatsappLink } from '../../lib/format.js';
 import { PAYMENT_LABELS, fetchMenu, trackOrder } from '../../lib/api.js';
 import { contactOf } from '../../lib/store.js';
-import { continueText, etaOf, timelineOf } from '../../lib/orders.js';
+import { continueText, etaOf, nextPollDelay, timelineOf } from '../../lib/orders.js';
 import StorePhoto from '../StorePhoto.js';
-
-const POLL_MS = 10000;
 
 function readStorage(key) {
   try { return JSON.parse(window.localStorage.getItem(key) || 'null'); } catch { return null; }
@@ -33,6 +31,12 @@ export default function Tracker({ id, suffix, justPlaced = false }) {
   const who = contactOf(store.owner);
   const [error, setError] = useState('');
   const [now, setNow] = useState(() => Date.now());
+  // Última atualização que deu certo: com falha depois, o status antigo fica marcado como desatualizado
+  const [lastOk, setLastOk] = useState(null);
+  const [errorStatus, setErrorStatus] = useState(0);
+  const [checking, setChecking] = useState(false);
+  const failures = useRef(0);
+  const timer = useRef(null);
   const saved = typeof window !== 'undefined' ? readStorage(`sabores:delivery:order:${id}`) : null;
   const finished = order && (order.status === 'DONE' || order.status === 'CANCELED');
 
@@ -47,19 +51,67 @@ export default function Tracker({ id, suffix, justPlaced = false }) {
       .catch(() => {});
   }, []);
 
+  /**
+   * Consulta a loja e agenda a próxima: 10 s normalmente, mais espaçado depois de falhas
+   * (até 60 s), parado com a aba em segundo plano e quando o pedido termina.
+   */
+  const load = useCallback(async () => {
+    clearTimeout(timer.current);
+    setChecking(true);
+    let status = 0;
+    let done = false;
+    try {
+      const o = await trackOrder(id, suffix);
+      setOrder(o);
+      setError('');
+      setLastOk(Date.now());
+      setNow(Date.now());
+      failures.current = 0;
+      done = o.status === 'DONE' || o.status === 'CANCELED';
+    } catch (err) {
+      failures.current += 1;
+      status = err.status || 0;
+      setErrorStatus(status);
+      setError(err.message);
+    } finally {
+      setChecking(false);
+    }
+    if (!done && document.visibilityState !== 'hidden') {
+      timer.current = setTimeout(() => void load(), nextPollDelay(failures.current, status));
+    }
+  }, [id, suffix]);
+
   useEffect(() => {
-    let timer;
-    const load = () => trackOrder(id, suffix).then((o) => { setOrder(o); setError(''); setNow(Date.now()); }).catch((err) => setError(err.message));
-    load();
-    if (!finished) timer = setInterval(load, POLL_MS);
-    return () => clearInterval(timer);
-  }, [id, suffix, finished]);
+    void load();
+    // Volta a consultar na hora quando a pessoa volta para a aba ou a internet volta
+    const resume = () => { if (document.visibilityState !== 'hidden') void load(); };
+    document.addEventListener('visibilitychange', resume);
+    window.addEventListener('online', resume);
+    return () => {
+      clearTimeout(timer.current);
+      document.removeEventListener('visibilitychange', resume);
+      window.removeEventListener('online', resume);
+    };
+  }, [load]);
+
+  // "Agora" anda sozinho (previsão e atraso) mesmo sem resposta nova da loja
+  useEffect(() => {
+    if (finished) return undefined;
+    const tick = setInterval(() => setNow(Date.now()), 30000);
+    return () => clearInterval(tick);
+  }, [finished]);
 
   if (error && !order) {
+    const notFound = errorStatus === 404 || errorStatus === 400;
     return (
       <main className="page track">
-        <h1>Pedido não encontrado</h1>
+        <h1>{notFound ? 'Pedido não encontrado' : 'Não deu para carregar seu pedido'}</h1>
         <p className="error" role="alert">{error}</p>
+        {!notFound && (
+          <button type="button" className="btn btn--primary btn--block" disabled={checking} onClick={() => { failures.current = 0; void load(); }}>
+            {checking ? 'Tentando…' : 'Tentar de novo'}
+          </button>
+        )}
         <a className="btn btn--block" href="/">Voltar ao cardápio</a>
       </main>
     );
@@ -83,6 +135,19 @@ export default function Tracker({ id, suffix, justPlaced = false }) {
 
   return (
     <main className="page track">
+      {/* Falhou depois de já ter mostrado o pedido: o status abaixo pode estar velho (QA10) */}
+      {error && (
+        <div className="stale" role="alert">
+          <p>
+            <strong>Sem atualização da loja{lastOk ? ` desde ${clock(new Date(lastOk))}` : ''}.</strong>{' '}
+            Mostrando o último status conhecido. {error}
+          </p>
+          <button type="button" className="btn btn--ghost" disabled={checking} onClick={() => { failures.current = 0; void load(); }}>
+            {checking ? 'Atualizando…' : 'Atualizar agora'}
+          </button>
+        </div>
+      )}
+
       <header className="track__head">
         <a className="icon-btn" href="/" aria-label="Voltar ao cardápio">
           <svg viewBox="0 0 20 20" width="20" height="20" aria-hidden="true"><path d="M12.5 4.5L7 10l5.5 5.5" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" /></svg>
