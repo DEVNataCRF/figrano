@@ -4,17 +4,44 @@ const test = require('node:test');
 const assert = require('node:assert/strict');
 const { Store } = require('../src/main/store');
 const { BotEngine } = require('../src/main/robo/engine');
-const { statusAviso, confirmedMessage, parseReview, reviewRequest } = require('../src/main/robo/avisos');
+const { statusAviso, confirmedMessage, receivedMessage, awaitingPixMessage, pixConfirmedMessage, delayMessage, parseReview, reviewRequest } = require('../src/main/robo/avisos');
 
 const LINK = 'http://site.test/pedido/?id=o1&t=0001';
 const order = (status) => ({ id: 'o1', number: 12, status, customer: { phone: '5528999990001' } });
 
 test('avisos de produção, saída, retirada e entrega, com o link de acompanhamento', () => {
   assert.match(statusAviso(order('preparing'), { storeName: 'Sabores da Sil', link: LINK }), /Recebemos seu pedido #12 e ele já está sendo preparado[\s\S]*Acompanhe aqui: http:\/\/site\.test/);
-  assert.match(statusAviso(order('out'), { storeName: 'Sabores da Sil', link: LINK }), /saiu para entrega/);
+  assert.match(statusAviso(order('out'), { storeName: 'Sabores da Sil', link: LINK }), /saiu para entrega[\s\S]*Acompanhe aqui: http:\/\/site\.test/);
   assert.match(statusAviso(order('ready'), { storeName: 'Sabores da Sil', link: LINK }), /pronto para retirada/);
   assert.match(statusAviso(order('done'), { storeName: 'Sabores da Sil', link: LINK }), /#12 entregue/);
   assert.match(reviewRequest(order('done')), /nota de \*1 a 5\*/);
+});
+
+test('todos os avisos no mesmo padrão: cumprimento com o nome, blocos com emoji e o nome da loja', () => {
+  const pedido = {
+    id: 'o1', number: 12, customer: { name: 'Ana Paula', phone: '5528999990001' }, mode: 'delivery',
+    address: 'Rua A, 10 - Centro', neighborhood: 'Centro', total: 30, fee: 5, paymentMethod: 'CASH', payment: 'Dinheiro', changeFor: 50, items: [],
+  };
+  const ctx = { storeName: 'Sabores da Sil', link: LINK, pickupAddress: 'Rua da Sil, 10' };
+  const saiu = statusAviso({ ...pedido, status: 'out' }, ctx);
+  assert.match(saiu, /^Olá, Ana Paula! 🛵\n\nSeu pedido #12 saiu para entrega/);
+  assert.match(saiu, /💰 Total: R\$ 30,00\n💳 Pagamento: Dinheiro \(troco para R\$ 50,00\)\n📍 Entrega: Rua A, 10 — Centro/);
+  assert.match(saiu, /Sabores da Sil\nObrigado! ❤️$/);
+  const pronto = statusAviso({ ...pedido, mode: 'pickup', status: 'ready' }, ctx);
+  assert.match(pronto, /^Olá, Ana Paula! 🛍️[\s\S]*🏪 Retirada: Rua da Sil, 10[\s\S]*Te esperamos!/);
+  assert.match(statusAviso({ ...pedido, status: 'done' }, ctx), /^Olá, Ana Paula! 🎉\n\nPedido #12 entregue\.\nObrigado por pedir no Sabores da Sil! ❤️$/);
+  assert.match(statusAviso({ ...pedido, mode: 'pickup', status: 'done' }, ctx), /Pedido #12 retirado\./);
+  const cancelado = statusAviso({ ...pedido, status: 'canceled' }, ctx);
+  assert.match(cancelado, /^Olá, Ana Paula!\n\nSeu pedido #12 foi cancelado\./);
+  assert.doesNotMatch(cancelado, /Obrigado/);
+  assert.match(receivedMessage(pedido, ctx), /^Olá, Ana Paula! 👋\n\nRecebemos seu pedido #12 pelo site\. 📝[\s\S]*Assim que a loja confirmar/);
+  assert.match(awaitingPixMessage(pedido, ctx), /🧾[\s\S]*mande aqui o comprovante do Pix/);
+  assert.match(pixConfirmedMessage(pedido, ctx), /^Olá, Ana Paula! ✅\n\nComprovante conferido! Seu pedido #12 está confirmado\.[\s\S]*Pix \(pago ✅\)/);
+  const atraso = delayMessage(pedido, 15, ctx);
+  assert.match(atraso, /^Olá, Ana Paula! ⏳\n\nSeu pedido #12 vai atrasar um pouquinho: mais uns 15 minutos\./);
+  assert.match(atraso, /Acompanhe aqui: http:\/\/site\.test[\s\S]*Sabores da Sil$/);
+  // sem nome: "Olá! 👋"
+  assert.match(receivedMessage({ ...pedido, customer: {} }, ctx), /^Olá! 👋/);
 });
 
 test('lê a nota do cliente em vários jeitos; outra mensagem não é nota', () => {

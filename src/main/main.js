@@ -11,7 +11,7 @@ const { Store } = require('./store');
 const { BotEngine } = require('./robo/engine');
 const { AiResponder } = require('./ia/ai');
 const { menuText, money } = require('./robo/format');
-const { statusAviso, reviewRequest } = require('./robo/avisos');
+const { statusAviso, reviewRequest, receivedMessage, awaitingPixMessage, pixConfirmedMessage, delayMessage } = require('./robo/avisos');
 const { createAutoAccept } = require('./auto-accept');
 const { handoffGreeting } = require('./robo/saudacao');
 const { SerialQueue, SendQueue } = require('./queues');
@@ -428,6 +428,9 @@ async function onPlatformEvent(event) {
   const order = event.order;
   if (!order) return;
   const canMessage = store.settings.bot.status !== 'inactive';
+  // Mesmo padrão em todas as mensagens ao cliente: nome da loja, link de acompanhamento e retirada
+  const shop = platform.storeSettings(store.settings.store);
+  const messageContext = () => ({ storeName: shop.name, pickupAddress: shop.address, link: platform.trackingLinkFor(order) });
 
   if (event.type === 'order_new' && order.status === 'awaiting_pix') {
     alertSound('pedido');
@@ -436,9 +439,7 @@ async function onPlatformEvent(event) {
     if (canMessage) {
       const chatId = await chatOf(order);
       if (chatId) {
-        sendToChat(chatId, [
-          `Recebemos seu pedido #${order.number} pelo site (${money(order.total)}). Para confirmar, mande aqui o comprovante do Pix. Sem ele, o pedido não vai para a cozinha.`,
-        ], { respectsPause: false });
+        sendToChat(chatId, [awaitingPixMessage(order, messageContext())], { respectsPause: false });
       }
     }
     push('orders');
@@ -451,13 +452,10 @@ async function onPlatformEvent(event) {
     const auto = order.status === 'new' && autoAccept.enabled();
     notify(`Novo pedido #${order.number} ${origin}${auto ? ' · aceito e impresso' : ''}`, `${order.customer.name} · ${money(order.total)}`, 'orders');
     if (auto) autoAcceptAndPrint(order).catch((error) => console.error('[sabores] aceite automático falhou:', error));
-    if (order.source === 'online' && canMessage) {
+    // Com o aceite automático o resumo completo ("pedido confirmado") chega na hora: sem mensagem repetida
+    if (order.source === 'online' && canMessage && !auto) {
       const chatId = await chatOf(order);
-      if (chatId) {
-        sendToChat(chatId, [
-          `Recebemos seu pedido #${order.number} feito pelo site, no total de ${money(order.total)}. Vamos avisando cada etapa por aqui.`,
-        ], { respectsPause: false });
-      }
+      if (chatId) sendToChat(chatId, [receivedMessage(order, messageContext())], { respectsPause: false });
     }
     push('orders');
     return;
@@ -467,8 +465,7 @@ async function onPlatformEvent(event) {
     // A loja avisou atraso no painel: o cliente fica sabendo na hora, pelo WhatsApp
     if (canMessage) {
       const chatId = await chatOf(order);
-      const link = platform.trackingLinkFor(order);
-      if (chatId) sendToChat(chatId, [`Seu pedido #${order.number} vai atrasar um pouquinho: mais uns ${event.added} minutos. Desculpe pela espera!${link ? `\n\nA previsão atualizada fica aqui: ${link}` : ''}`], { respectsPause: false });
+      if (chatId) sendToChat(chatId, [delayMessage(order, event.added, messageContext())], { respectsPause: false });
     }
     push('orders');
     return;
@@ -479,10 +476,11 @@ async function onPlatformEvent(event) {
     if (event.previous === 'AWAITING_PIX' && order.status === 'new') {
       autoAcceptAndPrint(order).catch((error) => console.error('[sabores] aceite automático falhou:', error));
     }
-    const link = platform.trackingLinkFor(order);
-    const text = event.previous === 'AWAITING_PIX' && order.status === 'new'
-      ? `Comprovante conferido! Seu pedido #${order.number} está confirmado.${link ? `\n\nAcompanhe aqui: ${link}` : ''}`
-      : statusAviso(order, { storeName: platform.storeSettings(store.settings.store).name, pickupAddress: platform.storeSettings(store.settings.store).address, link });
+    const pixConfirmed = event.previous === 'AWAITING_PIX' && order.status === 'new';
+    // Pix conferido com aceite automático: o resumo "pedido confirmado" (com "Pix pago") já vai em seguida
+    const text = pixConfirmed
+      ? (autoAccept.enabled() ? null : pixConfirmedMessage(order, messageContext()))
+      : statusAviso(order, messageContext());
     if (text && canMessage) {
       const chatId = await chatOf(order);
       // Avisos de pedido saem em "ativo" e "só avisos", mesmo com a conversa pausada.

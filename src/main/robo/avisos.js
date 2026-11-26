@@ -17,12 +17,35 @@ function paymentLine(order) {
   return label;
 }
 
+/** "Olá, Nome! 👋" (sem nome: "Olá! 👋"). */
+function greeting(order, emoji = '👋') {
+  const name = String(order.customer?.name || '').trim();
+  return `Olá${name ? `, ${name}` : ''}!${emoji ? ` ${emoji}` : ''}`;
+}
+
+/** Onde o pedido vai: endereço da entrega (rua, referência — bairro) ou da retirada. */
+function placeLine(order, pickupAddress) {
+  if (order.mode === 'pickup') return `🏪 Retirada: ${pickupAddress || 'na loja'}`;
+  const { street, reference } = splitAddress(order.address, order.neighborhood);
+  const place = [street, reference].filter(Boolean).join(', ');
+  return `📍 Entrega: ${place}${order.neighborhood ? ` — ${order.neighborhood}` : ''}`;
+}
+
+/** Fecho de todas as mensagens: link de acompanhamento (se houver), nome da loja e o agradecimento. */
+function closing({ storeName, link, thanks = true }) {
+  return [
+    ...(link ? ['', `Acompanhe aqui: ${link}`] : []),
+    ...(storeName || thanks ? [''] : []),
+    ...(storeName ? [storeName] : []),
+    ...(thanks ? ['Obrigado! ❤️'] : []),
+  ];
+}
+
 /**
  * Mensagem de pedido confirmado (a loja aceitou e começou a preparar): itens com valor,
  * taxa, total, pagamento, onde entrega ou retira e o link de acompanhamento.
  */
 function confirmedMessage(order, { storeName, link, pickupAddress }) {
-  const name = String(order.customer?.name || '').trim();
   const pickup = order.mode === 'pickup';
   const lines = (order.items || []).map((item) => {
     const value = item.subtotal ?? (Number(item.price) || 0) * (Number(item.qty) || 0);
@@ -31,16 +54,8 @@ function confirmedMessage(order, { storeName, link, pickupAddress }) {
     return `   • ${item.qty}x ${item.name} — ${money(value)}${extras}${note}`;
   });
   const fee = Number(order.fee) || 0;
-  let where;
-  if (pickup) {
-    where = `🏪 Retirada: ${pickupAddress || 'na loja'}`;
-  } else {
-    const { street, reference } = splitAddress(order.address, order.neighborhood);
-    const place = [street, reference].filter(Boolean).join(', ');
-    where = `📍 Entrega: ${place}${order.neighborhood ? ` — ${order.neighborhood}` : ''}`;
-  }
   return [
-    `Olá${name ? `, ${name}` : ''}! 👋`,
+    greeting(order),
     '',
     `Recebemos seu pedido #${order.number} e ele já está sendo preparado. 😋`,
     '',
@@ -52,7 +67,7 @@ function confirmedMessage(order, { storeName, link, pickupAddress }) {
     '',
     '',
     `💳 Pagamento: ${paymentLine(order)}`,
-    where,
+    placeLine(order, pickupAddress),
     ...(storeName ? [storeName] : []),
     pickup ? 'Avisamos por aqui quando estiver pronto para retirar.' : 'Avisamos por aqui quando sair para entrega.',
     ...(link ? ['', `Acompanhe aqui: ${link}`] : []),
@@ -61,21 +76,107 @@ function confirmedMessage(order, { storeName, link, pickupAddress }) {
   ].join('\n');
 }
 
+/** Pedido feito pelo site, antes de a loja aceitar (sem aceite automático). */
+function receivedMessage(order, { storeName, link }) {
+  return [
+    greeting(order),
+    '',
+    `Recebemos seu pedido #${order.number} pelo site. 📝`,
+    '',
+    `💰 Total: ${money(order.total)}`,
+    `💳 Pagamento: ${paymentLine(order)}`,
+    '',
+    'Assim que a loja confirmar, mandamos o resumo completo por aqui.',
+    ...closing({ storeName, link }),
+  ].join('\n');
+}
+
+/** Pix pelo site: o pedido espera o comprovante para ir para a cozinha. */
+function awaitingPixMessage(order, { storeName, link }) {
+  return [
+    greeting(order),
+    '',
+    `Recebemos seu pedido #${order.number} pelo site. 🧾`,
+    '',
+    `💰 Total: ${money(order.total)}`,
+    '💳 Pagamento: Pix',
+    '',
+    '👉 Para confirmar, mande aqui o comprovante do Pix. Sem ele, o pedido não vai para a cozinha.',
+    ...closing({ storeName, link }),
+  ].join('\n');
+}
+
+/** Comprovante do Pix conferido pela loja (sem aceite automático; com ele, vai o resumo). */
+function pixConfirmedMessage(order, { storeName, link }) {
+  return [
+    greeting(order, '✅'),
+    '',
+    `Comprovante conferido! Seu pedido #${order.number} está confirmado.`,
+    '',
+    `💰 Total: ${money(order.total)}`,
+    '💳 Pagamento: Pix (pago ✅)',
+    '',
+    'Assim que começarmos a preparar, mandamos o resumo por aqui.',
+    ...closing({ storeName, link }),
+  ].join('\n');
+}
+
+/** A loja avisou atraso no painel. */
+function delayMessage(order, minutes, { storeName, link }) {
+  return [
+    greeting(order, '⏳'),
+    '',
+    `Seu pedido #${order.number} vai atrasar um pouquinho: mais uns ${minutes} minutos.`,
+    'Desculpe pela espera! 🙏',
+    ...closing({ storeName, link, thanks: false }),
+  ].join('\n');
+}
+
 /** Mensagem para cada mudança de status. `link` = página de acompanhamento no site. */
 function statusAviso(order, { storeName, link, pickupAddress = '' }) {
   const n = `#${order.number}`;
-  const track = link ? `\n\nAcompanhe aqui: ${link}` : '';
   switch (order.status) {
     case 'preparing':
       return confirmedMessage(order, { storeName, link, pickupAddress });
     case 'out':
-      return `Seu pedido ${n} saiu para entrega! Daqui a pouco chega aí.${track}`;
+      return [
+        greeting(order, '🛵'),
+        '',
+        `Seu pedido ${n} saiu para entrega e já está a caminho!`,
+        '',
+        `💰 Total: ${money(order.total)}`,
+        `💳 Pagamento: ${paymentLine(order)}`,
+        placeLine(order, pickupAddress),
+        ...closing({ storeName, link }),
+      ].join('\n');
     case 'ready':
-      return `Seu pedido ${n} está pronto para retirada!${track}`;
+      return [
+        greeting(order, '🛍️'),
+        '',
+        `Seu pedido ${n} está pronto para retirada!`,
+        '',
+        `💰 Total: ${money(order.total)}`,
+        `💳 Pagamento: ${paymentLine(order)}`,
+        placeLine({ ...order, mode: 'pickup' }, pickupAddress),
+        '',
+        'Te esperamos! 😉',
+        ...closing({ storeName, link }),
+      ].join('\n');
     case 'done':
-      return `Pedido ${n} entregue. Obrigada por pedir no ${storeName}!`;
+      return [
+        greeting(order, '🎉'),
+        '',
+        order.mode === 'pickup' ? `Pedido ${n} retirado.` : `Pedido ${n} entregue.`,
+        `Obrigado por pedir no ${storeName || 'nosso delivery'}! ❤️`,
+      ].join('\n');
     case 'canceled':
-      return `Seu pedido ${n} foi cancelado. Se precisar, é só chamar por aqui.`;
+      return [
+        greeting(order, ''),
+        '',
+        `Seu pedido ${n} foi cancelado.`,
+        'Se precisar, é só chamar por aqui. 🙏',
+        ...closing({ storeName, thanks: false }),
+      ].join('\n');
     default:
       return null;
   }
@@ -111,4 +212,4 @@ function reviewThanks(rating) {
     : `Poxa, sinto muito que não foi como esperado. Já avisei a Sil para ela entender o que aconteceu e falar com você.`;
 }
 
-module.exports = { statusAviso, confirmedMessage, reviewRequest, parseReview, reviewThanks, money };
+module.exports = { statusAviso, confirmedMessage, receivedMessage, awaitingPixMessage, pixConfirmedMessage, delayMessage, reviewRequest, parseReview, reviewThanks, money };
