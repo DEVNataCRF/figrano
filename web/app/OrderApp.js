@@ -896,9 +896,18 @@ function Bag({ cart, items, setQty, subtotal, store, canOrder, onCheckout, bare 
 }
 
 /** "Entrega R$ 6,00", "Entrega de R$ 5,00 a R$ 8,00" (por bairro) ou "Entrega grátis" */
+/**
+ * Quantidade com animação curta. A região "ao vivo" fica FORA do número animado (que é recriado a
+ * cada mudança): assim o leitor de tela anuncia "quantidade: 2" ao tocar em + ou −.
+ */
 function AnimatedQuantity({ value }) {
   const reduced = useReducedMotion();
-  return <motion.span key={value} className="num" aria-live="polite" initial={{ opacity: reduced ? 1 : 0.4, y: reduced ? 0 : -2 }} animate={{ opacity: 1, y: 0 }} transition={{ duration: reduced ? 0 : 0.12 }}>{value}</motion.span>;
+  return (
+    <span aria-live="polite" aria-atomic="true">
+      <span className="sr-only">quantidade: </span>
+      <motion.span key={value} className="num" initial={{ opacity: reduced ? 1 : 0.4, y: reduced ? 0 : -2 }} animate={{ opacity: 1, y: 0 }} transition={{ duration: reduced ? 0 : 0.12 }}>{value}</motion.span>
+    </span>
+  );
 }
 
 function feeLabel(store) {

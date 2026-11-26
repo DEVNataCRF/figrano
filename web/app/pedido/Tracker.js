@@ -156,7 +156,8 @@ export default function Tracker({ id, suffix, justPlaced = false }) {
           <p className="muted">{store.name}</p>
           <h1>Pedido #{order.number}</h1>
         </div>
-        <span className={`badge badge--${tone}`}>{badge}</span>
+        {/* Região "ao vivo": o leitor de tela anuncia quando o status muda sozinho (a tela consulta a loja) */}
+        <span className={`badge badge--${tone}`} role="status" aria-live="polite" aria-atomic="true">{badge}</span>
       </header>
 
       {justPlaced && order.status !== 'AWAITING_PIX' && order.status !== 'CANCELED' && (
@@ -196,7 +197,7 @@ export default function Tracker({ id, suffix, justPlaced = false }) {
             {steps.map((step) => (
               <li key={step.status} data-state={step.state} aria-current={step.state === 'now' ? 'step' : undefined}>
                 <span className="steps__dot" aria-hidden="true">{step.state === 'done' && <svg viewBox="0 0 16 16" width="12" height="12"><path d="M3.5 8.5l3 3 6-6.5" fill="none" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round" /></svg>}</span>
-                <span>{step.at && <time className="num" dateTime={step.at.toISOString()}>{clock(step.at)} · </time>}{step.label}</span>
+                <span>{step.at && <time className="num" dateTime={step.at.toISOString()}>{clock(step.at)} · </time>}{step.label}{step.state === 'done' && <span className="sr-only"> (concluído)</span>}{step.state === 'now' && <span className="sr-only"> (etapa atual)</span>}</span>
               </li>
             ))}
           </ol>

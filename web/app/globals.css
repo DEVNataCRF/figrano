@@ -474,8 +474,8 @@ a { color: var(--accent); }
 .placed h2 { font-family: var(--font-display); font-size: 22px !important; }
 .placed p { margin: 0 0 var(--s2); }
 .placed__check { display: grid; place-items: center; width: 40px; height: 40px; border-radius: 50%; background: var(--ok); color: #fff; }
-.btn--whatsapp { display: inline-flex; align-items: center; justify-content: center; gap: var(--s2); background: #1F8A4C; border-color: #1F8A4C; color: #fff; box-shadow: 0 2px 0 #166B3A; text-decoration: none; }
-.btn--whatsapp:hover { background: #166B3A; border-color: #166B3A; }
+.btn--whatsapp { display: inline-flex; align-items: center; justify-content: center; gap: var(--s2); background: #187A42; border-color: #187A42; color: #fff; box-shadow: 0 2px 0 #125E33; text-decoration: none; } /* verde escurecido: texto branco com contraste 5,4 (acessibilidade) */
+.btn--whatsapp:hover { background: #125E33; border-color: #125E33; }
 .steps time { color: var(--muted); font-weight: 600; }
 .steps li[data-state="now"] time { color: var(--ink); }
 .track__facts { display: grid; grid-template-columns: 1fr 1fr; gap: var(--s3); padding: var(--s3) 0; border-top: 1px solid var(--line); border-bottom: 1px solid var(--line); }
